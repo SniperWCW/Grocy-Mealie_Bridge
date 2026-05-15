@@ -201,7 +201,7 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
         if not self.coordinator.data:
             return {"recipes": []}
 
-        # Wir geben einfach nur die Top 5 Rezepte als Rohdaten weiter
+        # Wir geben ausschließlich das saubere Daten-Array an das Dashboard weiter
         return {
             "recipes": self.coordinator.data[:5]
         }
