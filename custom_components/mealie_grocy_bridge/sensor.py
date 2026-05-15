@@ -201,7 +201,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                     "relevantTotal": len(relevant_ingredients),
                     "matchingIngredients": list(set(matching_details)),
                     "missingIngredients": missing_details,
-                    "url": f"{mealie_url}/g/home/r/{recipe.get('slug', '')}"
+                    "url": f"{mealie_url}/g/home/r/{recipe.get('slug', '')}",
                     "hasExpiring": has_expiring_ingredient
                 })
 
