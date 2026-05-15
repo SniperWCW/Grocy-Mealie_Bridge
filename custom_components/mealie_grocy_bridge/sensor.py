@@ -199,14 +199,10 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
     def extra_state_attributes(self) -> dict:
         """Return device state attributes."""
         if not self.coordinator.data:
-            return {"recipes": []}
+            return {"recipes": [], "markdown_suggestions": "Keine passenden Rezepte gefunden. 🍕"}
 
-        # Wir geben ausschließlich das saubere Daten-Array an das Dashboard weiter
-        return {
-            "recipes": self.coordinator.data[:5]
-        }
+        top_recipes = self.coordinator.data[:5]
         
-        # Direktes Generieren des Markdown-Texts für dein Lovelace-Dashboard
         markdown = "### 🍳 Koch-Vorschläge für heute\n"
         markdown += "*Abgleich mit deinem Grocy-Bestand*\n"
         markdown += "---\n\n"
@@ -219,13 +215,11 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
             markdown += f"✅ Vorhanden: `{', '.join(formatted_ingredients)}`\n"
             
             if r["missingIngredients"]:
-                # Wir bereiten die Zutaten für die URL-Übergabe vor
                 ingredients_str = ", ".join(r["missingIngredients"])
                 markdown += f"🛒 Einkaufen: *{ingredients_str}*\n"
                 
-                # Dieser spezielle Link triggert die Home Assistant Aktion direkt beim Anklicken im Dashboard
-                # Wichtig: Funktioniert nativ im Home Assistant Frontend über den Service-Aufruf-Link
-                markdown += f"➕ [Zutaten auf Einkaufsliste setzen](/developer-tools/service?service=mealie_grocy_bridge.add_missing_ingredients&service_data=%7B%22ingredients%22%3A%22{ingredients_str}%22%7D)\n"
+                # REPARATUR: Ein sauberer, klickbarer Markdown-Link ohne störende Sonderzeichen-Verschachtelung
+                markdown += f"➕ [Zutaten auf Bring-Liste setzen](/developer-tools/action?service=mealie_grocy_bridge.add_missing_ingredients&ingredients={ingredients_str})\n"
                 
             markdown += f"👉 [Rezept öffnen]({r['url']})\n\n"
 
