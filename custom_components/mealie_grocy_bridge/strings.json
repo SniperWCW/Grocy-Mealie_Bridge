@@ -1,0 +1,16 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Mealie Grocy Bridge verbinden",
+        "description": "Gib die Verbindungsdaten für deine Mealie- und Grocy-Instanzen ein.",
+        "data": {
+          "mealie_url": "Mealie URL (z.B. http://xx.xx.xx.xx:9000)",
+          "mealie_token": "Mealie API Token",
+          "grocy_url": "Grocy URL (z.B. http://xx.xx.xx.xx:9283)",
+          "grocy_token": "Grocy API Key"
+        }
+      }
+    }
+  }
+}
