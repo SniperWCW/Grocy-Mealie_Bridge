@@ -3,6 +3,7 @@ from datetime import timedelta
 import logging
 import re
 import asyncio
+import urllib.parse  # Für die saubere URL-Codierung der Zutaten
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -91,7 +92,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         except Exception as err:
             raise Exception(f"Verbindung zu Grocy fehlgeschlagen: {err}")
 
-        # Mapping erstellen: {"sauerkraut": "Sauerkraut", "gemüsebrühe": "Gemüsebrühe"}
+        # Mapping erstellen
         grocy_products_map = {}
         for item in (grocy_data or []):
             if isinstance(item, dict) and "product" in item:
@@ -150,7 +151,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
 
                 found_stock_display = None
                 
-                # Jetzt matchen wir direkt gegen unsere Map und holen den echten Namen
                 for stock_low, stock_orig in grocy_products_map.items():
                     if stock_low in ing_words or \
                        any(word == stock_low for word in ing_words) or \
@@ -196,7 +196,6 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
         return len(self.coordinator.data) if self.coordinator.data else 0
 
     @property
-    @property
     def extra_state_attributes(self) -> dict:
         """Return device state attributes."""
         if not self.coordinator.data:
@@ -219,8 +218,11 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
                 ingredients_str = ", ".join(r["missingIngredients"])
                 markdown += f"🛒 Einkaufen: *{ingredients_str}*\n"
                 
-                # REPARATUR: Ein sauberer Link ohne die störenden Sonderzeichen (%7B%22...)
-                markdown += f"➕ [Zutaten auf Bring-Liste setzen](/developer-tools/action?service=mealie_grocy_bridge.add_missing_ingredients&ingredients={ingredients_str})\n"
+                # Hier werden die Zutaten URL-konform codiert (Leerzeichen zu %20 etc.)
+                encoded_ingredients = urllib.parse.quote(ingredients_str)
+                
+                # REPARATUR: Sauberer, valider Markdown-Link ohne HTML-Müll
+                markdown += f"➕ [Zutaten auf Bring-Liste setzen](/developer-tools/action?service=mealie_grocy_bridge.add_missing_ingredients&ingredients={encoded_ingredients})\n"
                 
             markdown += f"👉 [Rezept öffnen]({r['url']})\n\n"
 
