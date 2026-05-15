@@ -91,6 +91,15 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         except Exception as err:
             raise Exception(f"Verbindung zu Grocy fehlgeschlagen: {err}")
 
+        # Mapping erstellen: {"sauerkraut": "Sauerkraut", "gemüsebrühe": "Gemüsebrühe"}
+        grocy_products_map = {}
+        for item in (grocy_data or []):
+            if isinstance(item, dict) and "product" in item:
+                product_name = item.get("product", {}).get("name")
+                if product_name:
+                    orig_name = str(product_name).strip()
+                    grocy_products_map[orig_name.lower()] = orig_name
+
         # 2. Mealie Rezeptliste abrufen
         try:
             async with self.session.get(f"{mealie_url}/api/recipes?perPage=-1", headers=mealie_headers, timeout=15) as res:
@@ -140,21 +149,13 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                 ing_words = [w for w in re.split(r"[\s,()./]+", ing_text_low) if len(w) > 2]
 
                 found_stock_display = None
-                for item in (grocy_data or []):
-                    product = item.get("product")
-                    if not product or not product.get("name"):
-                        continue
-                    
-                    stock_name_original = str(product.get("name")).strip()
-                    stock_name_low = stock_name_original.lower()
-
-                    if len(stock_name_low) <= 1:
-                        continue
-
-                    if stock_name_low in ing_words or \
-                       any(word == stock_name_low for word in ing_words) or \
-                       (len(stock_name_low) > 4 and stock_name_low in ing_text_low):
-                        found_stock_display = stock_name_original
+                
+                # Jetzt matchen wir direkt gegen unsere Map und holen den echten Namen
+                for stock_low, stock_orig in grocy_products_map.items():
+                    if stock_low in ing_words or \
+                       any(word == stock_low for word in ing_words) or \
+                       (len(stock_low) > 4 and stock_low in ing_text_low):
+                        found_stock_display = stock_orig
                         break
 
                 if found_stock_display:
