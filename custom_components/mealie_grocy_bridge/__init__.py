@@ -6,11 +6,27 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+CONF_EXCLUDED_FOODS = "excluded_foods"
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Mealie Grocy Bridge from a config entry."""
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = entry.data
+    
+    # Führe data und options zusammen (Optionen überschreiben die Ersteinrichtung)
+    config = {**entry.data, **entry.options}
+    
+    # Wandle den kommagetrennten String der Ausschlüsse in eine saubere Python-Liste um
+    exclusions_raw = config.get(CONF_EXCLUDED_FOODS, "")
+    excluded_foods_list = [item.strip() for item in exclusions_raw.split(",") if item.strip()]
+
+    # Speichere die verarbeiteten Daten ab
+    hass.data[DOMAIN][entry.entry_id] = {
+        **config,
+        "excluded_foods_list": excluded_foods_list
+    }
+
+    # Registriere den Listener, der bei Änderungen im "Konfigurieren"-Menü feuert
+    entry.async_on_unload(entry.add_update_listener(update_listener))
 
     # Registriere die Aktion für das rezeptgenaue Hinzufügen von Zutaten
     async def handle_add_missing_ingredients(call: ServiceCall):
@@ -48,6 +64,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Lade die Sensor-Plattform
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
     return True
+
+
+async def update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Wird aufgerufen, wenn die Optionen in der UI geändert wurden."""
+    _LOGGER.info("Konfiguration der Mealie Grocy Bridge wurde aktualisiert. Lade neu...")
+    await hass.config_entries.async_reload(entry.entry_id)
+
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
