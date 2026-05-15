@@ -1,0 +1,10 @@
+{
+  "domain": "mealie_grocy_bridge",
+  "name": "Mealie Grocy Bridge",
+  "codeowners": [],
+  "config_flow": true,
+  "documentation": "https://github.com/DEIN_GITHUB_NAME/DEIN_REPO_NAME",
+  "iot_class": "local_polling",
+  "version": "1.0.0",
+  "requirements": []
+}
