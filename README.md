@@ -115,12 +115,13 @@ cards:
     columns: 2
     square: false
     cards:
+      # REZEPT 1
       - type: vertical-stack
         cards:
           - type: markdown
             content: >-
-              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage',
-              'recipes') %}  {% if recipes and recipes|length > 0 %}
+              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage', 'recipes') %}  
+              {% if recipes and recipes|length > 0 %}
                 ### 🍳 {{ recipes[0].recipeName | upper }}
                 📊 Score: **{{ recipes[0].matchScore }}%**
                 ✅ Vorhanden: `{% for ing in recipes[0].matchingIngredients %}{{ ing | capitalize }}{{ ", " if not loop.last }}{% endfor %}`
@@ -130,50 +131,55 @@ cards:
               {% else %}
                 ### 🍳 Kein Rezept gefunden
               {% endif %}
-          - type: grid
-            columns: 2
-            square: false
-            cards:
-              - type: button
-                name: Auf Bring
+          - type: custom:mushroom-chips-card
+            chips:
+              - type: action
                 icon: mdi:cart-plus
                 tap_action:
-                  action: call-service
-                  service: script.zutaten_auf_to_do_liste_setzen
+                  action: perform-action
+                  perform_action: script.zutaten_auf_to_do_liste_setzen
                   data:
                     recipe_index: 0
+                  target: {}
+                icon_color: primary
+            alignment: center
+
+      # REZEPT 2
       - type: vertical-stack
         cards:
           - type: markdown
             content: >-
-              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage',
-              'recipes') %} {% if recipes and recipes|length > 1 %}
+              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage', 'recipes') %} 
+              {% if recipes and recipes|length > 1 %}
                 ### 🍳 {{ recipes[1].recipeName | upper }}
                 📊 Score: **{{ recipes[1].matchScore }}%**
                 ✅ Vorhanden: `{% for ing in recipes[1].matchingIngredients %}{{ ing | capitalize }}{{ ", " if not loop.last }}{% endfor %}`
                 🛒 Einkaufen: *{{ recipes[1].missingIngredients | join(', ') }}*
+                
                 🔗 **[👉 REZEPT IN MEALIE ÖFFNEN]({{ recipes[1].url }})**
               {% else %}
                 ### 🍳 Kein Rezept gefunden
               {% endif %}
-          - type: grid
-            columns: 2
-            square: false
-            cards:
-              - type: button
-                name: Auf Bring
+          - type: custom:mushroom-chips-card
+            chips:
+              - type: action
                 icon: mdi:cart-plus
                 tap_action:
-                  action: call-service
-                  service: script.zutaten_auf_to_do_liste_setzen
+                  action: perform-action
+                  perform_action: script.zutaten_auf_to_do_liste_setzen
                   data:
                     recipe_index: 1
+                  target: {}
+                icon_color: primary
+            alignment: center
+
+      # REZEPT 3
       - type: vertical-stack
         cards:
           - type: markdown
             content: >-
-              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage',
-              'recipes') %} {% if recipes and recipes|length > 2 %}
+              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage', 'recipes') %} 
+              {% if recipes and recipes|length > 2 %}
                 ### 🍳 {{ recipes[2].recipeName | upper }}
                 📊 Score: **{{ recipes[2].matchScore }}%**
                 ✅ Vorhanden: `{% for ing in recipes[2].matchingIngredients %}{{ ing | capitalize }}{{ ", " if not loop.last }}{% endfor %}`
@@ -183,24 +189,26 @@ cards:
               {% else %}
                 ### 🍳 Kein Rezept gefunden
               {% endif %}
-          - type: grid
-            columns: 2
-            square: false
-            cards:
-              - type: button
-                name: Auf Bring
+          - type: custom:mushroom-chips-card
+            chips:
+              - type: action
                 icon: mdi:cart-plus
                 tap_action:
-                  action: call-service
-                  service: script.zutaten_auf_to_do_liste_setzen
+                  action: perform-action
+                  perform_action: script.zutaten_auf_to_do_liste_setzen
                   data:
                     recipe_index: 2
+                  target: {}
+                icon_color: primary
+            alignment: center
+
+      # REZEPT 4
       - type: vertical-stack
         cards:
           - type: markdown
             content: >-
-              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage',
-              'recipes') %} {% if recipes and recipes|length > 3 %}
+              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage', 'recipes') %} 
+              {% if recipes and recipes|length > 3 %}
                 ### 🍳 {{ recipes[3].recipeName | upper }}
                 📊 Score: **{{ recipes[3].matchScore }}%**
                 ✅ Vorhanden: `{% for ing in recipes[3].matchingIngredients %}{{ ing | capitalize }}{{ ", " if not loop.last }}{% endfor %}`
@@ -210,25 +218,24 @@ cards:
               {% else %}
                 ### 🍳 Kein Rezept gefunden
               {% endif %}
-          - type: grid
-            columns: 2
-            square: false
-            cards:
-              - type: button
-                name: Auf Bring
+          - type: custom:mushroom-chips-card
+            chips:
+              - type: action
                 icon: mdi:cart-plus
                 tap_action:
-                  action: call-service
-                  service: script.zutaten_auf_to_do_liste_setzen
+                  action: perform-action
+                  perform_action: script.zutaten_auf_to_do_liste_setzen
                   data:
                     recipe_index: 3
+                  target: {}
+                icon_color: primary
+            alignment: center
     grid_options:
       columns: 24
       rows: auto
 grid_options:
   columns: 24
   rows: auto
-
 
 ````
 ⚙️ Voraussetzungen Frontend
