@@ -3,7 +3,6 @@ from datetime import timedelta
 import logging
 import re
 import asyncio
-import aiohttp
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -35,10 +34,7 @@ async def async_setup_entry(
     """Set up the sensor platform."""
     config = entry.data
     coordinator = MealieGrocyBridgeCoordinator(hass, config)
-    
-    # Ersten Abruf beim Start ausführen
     await coordinator.async_config_entry_first_refresh()
-    
     async_add_entities([MealieGrocySensor(coordinator, entry.entry_id)], True)
 
 
@@ -50,7 +46,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         self.config = config
         self.session = async_get_clientsession(hass)
         
-        # Aktualisierung alle 60 Minuten (kann manuell über HA erzwungen werden)
         super().__init__(
             hass,
             _LOGGER,
@@ -96,12 +91,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         except Exception as err:
             raise Exception(f"Verbindung zu Grocy fehlgeschlagen: {err}")
 
-        grocy_stock_names = []
-        for item in grocy_data:
-            product_name = item.get("product", {}).get("name", "Unbekannt")
-            grocy_stock_names.append(product_name.lower().strip())
-        grocy_stock_names = [name for name in grocy_stock_names if len(name) > 1]
-
         # 2. Mealie Rezeptliste abrufen
         try:
             async with self.session.get(f"{mealie_url}/api/recipes?perPage=-1", headers=mealie_headers, timeout=15) as res:
@@ -113,7 +102,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
 
         recipes_list = mealie_data.get("items", [])
         
-        # Parallelisiertes Nachladen aller Detail-Rezepte (max 10 parallel)
         semaphore = asyncio.Semaphore(10)
         tasks = [
             self._fetch_recipe_details(semaphore, r.get("slug"), mealie_url, mealie_headers)
@@ -122,7 +110,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         full_recipes = await asyncio.gather(*tasks)
         full_recipes = [r for r in full_recipes if r is not None]
 
-        # 3. Matching-Algorithmus (1:1 Portierung deiner n8n Logik)
         # 3. Matching-Algorithmus
         results = []
 
@@ -153,7 +140,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                 ing_words = [w for w in re.split(r"[\s,()./]+", ing_text_low) if len(w) > 2]
 
                 found_stock_display = None
-                # Wir gehen durch die Originaldaten von Grocy, um die korrekte Schreibweise zu erhalten
                 for item in (grocy_data or []):
                     product = item.get("product")
                     if not product or not product.get("name"):
@@ -165,7 +151,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                     if len(stock_name_low) <= 1:
                         continue
 
-                    # Der eigentliche Abgleich (identisch zu vorher, nur mit kleingeschriebener Variable)
                     if stock_name_low in ing_words or \
                        any(word == stock_name_low for word in ing_words) or \
                        (len(stock_name_low) > 4 and stock_name_low in ing_text_low):
@@ -193,8 +178,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         results.sort(key=lambda x: x["matchScore"], reverse=True)
         return results
 
-########
-
 
 class MealieGrocySensor(CoordinatorEntity, SensorEntity):
     """Representation of the Mealie Grocy Bridge Sensor."""
@@ -219,7 +202,6 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
 
         top_recipes = self.coordinator.data[:5]
         
-        # Direktes Generieren des Markdown-Texts für dein Lovelace-Dashboard
         markdown = "### 🍳 Koch-Vorschläge für heute\n"
         markdown += "*Abgleich mit deinem Grocy-Bestand*\n"
         markdown += "---\n\n"
