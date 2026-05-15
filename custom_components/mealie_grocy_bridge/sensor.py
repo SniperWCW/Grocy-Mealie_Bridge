@@ -1,9 +1,8 @@
 """Sensor platform for Mealie Grocy Bridge."""
-from datetime import timedelta
+from datetime import timedelta, datetime
 import logging
 import re
 import asyncio
-import urllib.parse
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -26,7 +25,7 @@ BASICS_TO_IGNORE = [
     "salz", "pfeffer", "wasser", "öl", "zucker", "mehl", "gewürz", "prise", "etwas",
     "kümmel", "sasilikum", "cayennepfeffer", "chilli", "curry", "honig", "koriander",
     "kurkuma", "majoran", "meersalz", "muskat", "oregano", "paprikapulver",
-    "petersilie", "schnittlauch", "thymian", "zwiebel", "knoblauch"
+    "petersilie", "schnittlauch", "thymian"
 ]
 
 async def async_setup_entry(
@@ -51,7 +50,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(minutes=60),
+            update_interval=timedelta(minutes=30),
         )
 
     async def _fetch_recipe_details(self, semaphore, slug, mealie_url, headers):
@@ -91,13 +90,35 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         except Exception as err:
             raise Exception(f"Verbindung zu Grocy fehlgeschlagen: {err}")
 
+        # Jetzt speichern wir den Namen UND ob das Produkt bald abläuft
         grocy_products_map = {}
+        now = datetime.now().date()
+        in_one_month = now + timedelta(days=30)
+
         for item in (grocy_data or []):
             if isinstance(item, dict) and "product" in item:
                 product_name = item.get("product", {}).get("name")
                 if product_name:
                     orig_name = str(product_name).strip()
-                    grocy_products_map[orig_name.lower()] = orig_name
+                    
+                    # MHD-Check extrahieren
+                    is_expiring_soon = False
+                    bbd_str = item.get("best_before_date") # Format von Grocy: "YYYY-MM-DD"
+                    
+                    if bbd_str:
+                        try:
+                            # Manche unendlichen Produkte haben "2999-12-31", das fangen wir ab
+                            if not bbd_str.startswith("2999"):
+                                bbd_date = datetime.strptime(bbd_str, "%Y-%m-%d").date()
+                                if bbd_date <= in_one_month:
+                                    is_expiring_soon = True
+                        except ValueError:
+                            pass
+
+                    grocy_products_map[orig_name.lower()] = {
+                        "orig_name": orig_name,
+                        "expiring": is_expiring_soon
+                    }
 
         try:
             async with self.session.get(f"{mealie_url}/api/recipes?perPage=-1", headers=mealie_headers, timeout=15) as res:
@@ -137,6 +158,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                 continue
 
             match_count = 0
+            has_expiring_ingredient = False
             matching_details = []
             missing_details = []
 
@@ -145,23 +167,33 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                 ing_text_low = str(ing_original_text).lower()
                 ing_words = [w for w in re.split(r"[\s,()./]+", ing_text_low) if len(w) > 2]
 
-                found_stock_display = None
+                found_product_info = None
                 
-                for stock_low, stock_orig in grocy_products_map.items():
+                for stock_low, info in grocy_products_map.items():
                     if stock_low in ing_words or \
                        any(word == stock_low for word in ing_words) or \
                        (len(stock_low) > 4 and stock_low in ing_text_low):
-                        found_stock_display = stock_orig
+                        found_product_info = info
                         break
 
-                if found_stock_display:
+                if found_product_info:
                     match_count += 1
-                    matching_details.append(found_stock_display)
+                    matching_details.append(found_product_info["orig_name"])
+                    if found_product_info["expiring"]:
+                        has_expiring_ingredient = True
                 else:
                     missing_details.append(ing_original_text)
 
             if match_count > 0:
+                # Basis-Score berechnen
                 score = round((match_count / len(relevant_ingredients)) * 100)
+                
+                # Wenn eine Zutat bald abläuft, geben wir einen "MHD-Bonus" von 15%
+                if has_expiring_ingredient:
+                    score += 15
+                    if score > 100: # Deckelung bei max. 100%
+                        score = 100
+
                 results.append({
                     "recipeName": recipe.get("name", "Unbekanntes Rezept"),
                     "matchScore": score,
@@ -172,6 +204,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                     "url": f"{mealie_url}/g/home/r/{recipe.get('slug', '')}"
                 })
 
+        # Sortiert nach dem neuen, manipulierten Score (Rezepte mit ablaufenden Waren rutschen nach oben)
         results.sort(key=lambda x: x["matchScore"], reverse=True)
         return results
 
@@ -194,10 +227,7 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict:
         """Return device state attributes."""
-        if not self.coordinator.data:
-            return {"recipes": [], "markdown_suggestions": "Keine passenden Rezepte gefunden. 🍕"}
-
-        top_recipes = self.coordinator.data[:5]
+        top_recipes = self.coordinator.data[:5] if self.coordinator.data else []
         
         markdown = "### 🍳 Koch-Vorschläge für heute\n"
         markdown += "*Abgleich mit deinem Grocy-Bestand*\n"
@@ -220,6 +250,6 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
         markdown += "*🤖 Generiert über Mealie-Grocy Bridge Integration*"
 
         return {
-            "recipes": top_recipes,
+            "recipes": self.coordinator.data if self.coordinator.data else [],
             "markdown_suggestions": markdown
         }
