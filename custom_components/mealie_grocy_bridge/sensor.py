@@ -203,6 +203,7 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
 
         top_recipes = self.coordinator.data[:5]
         
+        # Direktes Generieren des Markdown-Texts für dein Lovelace-Dashboard
         markdown = "### 🍳 Koch-Vorschläge für heute\n"
         markdown += "*Abgleich mit deinem Grocy-Bestand*\n"
         markdown += "---\n\n"
@@ -210,7 +211,11 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
         for r in top_recipes:
             markdown += f"**{r['recipeName'].upper()}**\n"
             markdown += f"📊 Score: **{r['matchScore']}%**\n"
-            markdown += f"✅ Vorhanden: `{', '.join(r['matchingIngredients'])}`\n"
+            
+            # HIER DIE ERZWUNGENE GROSSSCHREIBUNG FÜR DIE ANZEIGE:
+            # .capitalize() wandelt "sauerkraut" in "Sauerkraut" um
+            formatted_ingredients = [str(i).capitalize() for i in r['matchingIngredients']]
+            markdown += f"✅ Vorhanden: `{', '.join(formatted_ingredients)}`\n"
             
             if r["missingIngredients"]:
                 markdown += f"🛒 Einkaufen: *{', '.join(r['missingIngredients'])}*\n"
