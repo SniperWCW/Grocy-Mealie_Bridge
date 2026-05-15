@@ -21,7 +21,8 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-BASICS_TO_IGNORE = [
+# Fallback-Liste, falls in der UI gar nichts eingetragen ist
+DEFAULT_BASICS = [
     "salz", "pfeffer", "wasser", "öl", "zucker", "mehl", "gewürz", "prise", "etwas",
     "kümmel", "sasilikum", "cayennepfeffer", "chilli", "curry", "honig", "koriander",
     "kurkuma", "majoran", "meersalz", "muskat", "oregano", "paprikapulver",
@@ -32,8 +33,8 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up the sensor platform."""
-    config = entry.data
-    coordinator = MealieGrocyBridgeCoordinator(hass, config)
+    # Wir übergeben die entry_id, damit der Coordinator immer auf hass.data zugreifen kann
+    coordinator = MealieGrocyBridgeCoordinator(hass, entry.entry_id)
     await coordinator.async_config_entry_first_refresh()
     async_add_entities([MealieGrocySensor(coordinator, entry.entry_id)], True)
 
@@ -41,9 +42,9 @@ async def async_setup_entry(
 class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
     """Class to manage fetching Mealie and Grocy data."""
 
-    def __init__(self, hass: HomeAssistant, config: dict) -> None:
+    def __init__(self, hass: HomeAssistant, entry_id: str) -> None:
         """Initialize the coordinator."""
-        self.config = config
+        self.entry_id = entry_id
         self.session = async_get_clientsession(hass)
         
         super().__init__(
@@ -66,17 +67,24 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         """Fetch data from Grocy and Mealie and run matching algorithm."""
-        grocy_url = self.config[CONF_GROCY_URL].rstrip("/")
+        # Holt die absolut aktuellen Config-Daten (inklusive geänderter Optionen) aus hass.data
+        config_entry_data = self.hass.data[DOMAIN][self.entry_id]
+
+        grocy_url = config_entry_data[CONF_GROCY_URL].rstrip("/")
         if not grocy_url.startswith(("http://", "https://")):
             grocy_url = f"http://{grocy_url}"
             
-        grocy_token = self.config[CONF_GROCY_TOKEN]
+        grocy_token = config_entry_data[CONF_GROCY_TOKEN]
         
-        mealie_url = self.config[CONF_MEALIE_URL].rstrip("/")
+        mealie_url = config_entry_data[CONF_MEALIE_URL].rstrip("/")
         if not mealie_url.startswith(("http://", "https://")):
             mealie_url = f"http://{mealie_url}"
             
-        mealie_token = self.config[CONF_MEALIE_TOKEN]
+        mealie_token = config_entry_data[CONF_MEALIE_TOKEN]
+
+        # Dynamische Ausschlussliste aus den Optionen ziehen und alles in Kleinbuchstaben wandeln
+        ui_exclusions = config_entry_data.get("excluded_foods_list", [])
+        basics_to_ignore = [item.lower() for item in ui_exclusions] if ui_exclusions else DEFAULT_BASICS
 
         grocy_headers = {"GROCY-API-KEY": grocy_token}
         mealie_headers = {"Authorization": f"Bearer {mealie_token}"}
@@ -90,7 +98,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         except Exception as err:
             raise Exception(f"Verbindung zu Grocy fehlgeschlagen: {err}")
 
-        # Jetzt speichern wir den Namen UND ob das Produkt bald abläuft
         grocy_products_map = {}
         now = datetime.now().date()
         in_one_month = now + timedelta(days=30)
@@ -101,13 +108,11 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                 if product_name:
                     orig_name = str(product_name).strip()
                     
-                    # MHD-Check extrahieren
                     is_expiring_soon = False
-                    bbd_str = item.get("best_before_date") # Format von Grocy: "YYYY-MM-DD"
+                    bbd_str = item.get("best_before_date")
                     
                     if bbd_str:
                         try:
-                            # Manche unendlichen Produkte haben "2999-12-31", das fangen wir ab
                             if not bbd_str.startswith("2999"):
                                 bbd_date = datetime.strptime(bbd_str, "%Y-%m-%d").date()
                                 if bbd_date <= in_one_month:
@@ -151,7 +156,8 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                 if not isinstance(ing, dict):
                     continue
                 text = (ing.get("note") or ing.get("display") or ing.get("originalText") or "").lower()
-                if text and not any(basic in text for basic in BASICS_TO_IGNORE):
+                # Nutzt jetzt die dynamische Liste aus der UI
+                if text and not any(basic in text for basic in basics_to_ignore):
                     relevant_ingredients.append(ing)
 
             if not relevant_ingredients:
@@ -185,13 +191,11 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                     missing_details.append(ing_original_text)
 
             if match_count > 0:
-                # Basis-Score berechnen
                 score = round((match_count / len(relevant_ingredients)) * 100)
                 
-                # Wenn eine Zutat bald abläuft, geben wir einen "MHD-Bonus" von 15%
                 if has_expiring_ingredient:
                     score += 15
-                    if score > 100: # Deckelung bei max. 100%
+                    if score > 100:
                         score = 100
 
                 results.append({
@@ -205,7 +209,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                     "hasExpiring": has_expiring_ingredient
                 })
 
-        # Sortiert nach dem neuen, manipulierten Score (Rezepte mit ablaufenden Waren rutschen nach oben)
         results.sort(key=lambda x: x["matchScore"], reverse=True)
         return results
 
