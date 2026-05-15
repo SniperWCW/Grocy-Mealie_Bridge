@@ -212,13 +212,17 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
             markdown += f"**{r['recipeName'].upper()}**\n"
             markdown += f"📊 Score: **{r['matchScore']}%**\n"
             
-            # HIER DIE ERZWUNGENE GROSSSCHREIBUNG FÜR DIE ANZEIGE:
-            # .capitalize() wandelt "sauerkraut" in "Sauerkraut" um
             formatted_ingredients = [str(i).capitalize() for i in r['matchingIngredients']]
             markdown += f"✅ Vorhanden: `{', '.join(formatted_ingredients)}`\n"
             
             if r["missingIngredients"]:
-                markdown += f"🛒 Einkaufen: *{', '.join(r['missingIngredients'])}*\n"
+                # Wir bereiten die Zutaten für die URL-Übergabe vor
+                ingredients_str = ", ".join(r["missingIngredients"])
+                markdown += f"🛒 Einkaufen: *{ingredients_str}*\n"
+                
+                # Dieser spezielle Link triggert die Home Assistant Aktion direkt beim Anklicken im Dashboard
+                # Wichtig: Funktioniert nativ im Home Assistant Frontend über den Service-Aufruf-Link
+                markdown += f"➕ [Zutaten auf Einkaufsliste setzen](/developer-tools/service?service=mealie_grocy_bridge.add_missing_ingredients&service_data=%7B%22ingredients%22%3A%22{ingredients_str}%22%7D)\n"
                 
             markdown += f"👉 [Rezept öffnen]({r['url']})\n\n"
 
