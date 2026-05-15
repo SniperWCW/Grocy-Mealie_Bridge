@@ -72,8 +72,15 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch data from Grocy and Mealie and run matching algorithm."""
         grocy_url = self.config[CONF_GROCY_URL].rstrip("/")
+        if not grocy_url.startswith(("http://", "https://")):
+            grocy_url = f"http://{grocy_url}"
+            
         grocy_token = self.config[CONF_GROCY_TOKEN]
+        
         mealie_url = self.config[CONF_MEALIE_URL].rstrip("/")
+        if not mealie_url.startswith(("http://", "https://")):
+            mealie_url = f"http://{mealie_url}"
+            
         mealie_token = self.config[CONF_MEALIE_TOKEN]
 
         grocy_headers = {"GROCY-API-KEY": grocy_token}
