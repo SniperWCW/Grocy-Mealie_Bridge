@@ -21,10 +21,9 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# Fallback-Liste, falls in der UI gar nichts eingetragen ist
 DEFAULT_BASICS = [
     "salz", "pfeffer", "wasser", "öl", "zucker", "mehl", "gewürz", "prise", "etwas",
-    "kümmel", "sasilikum", "cayennepfeffer", "chilli", "curry", "honig", "koriander",
+    "kümmel", "basilikum", "cayennepfeffer", "chilli", "curry", "honig", "koriander",
     "kurkuma", "majoran", "meersalz", "muskat", "oregano", "paprikapulver",
     "petersilie", "schnittlauch", "thymian"
 ]
@@ -33,7 +32,6 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up the sensor platform."""
-    # Wir übergeben die entry_id, damit der Coordinator immer auf hass.data zugreifen kann
     coordinator = MealieGrocyBridgeCoordinator(hass, entry.entry_id)
     await coordinator.async_config_entry_first_refresh()
     async_add_entities([MealieGrocySensor(coordinator, entry.entry_id)], True)
@@ -67,7 +65,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         """Fetch data from Grocy and Mealie and run matching algorithm."""
-        # Holt die absolut aktuellen Config-Daten (inklusive geänderter Optionen) aus hass.data
         config_entry_data = self.hass.data[DOMAIN][self.entry_id]
 
         grocy_url = config_entry_data[CONF_GROCY_URL].rstrip("/")
@@ -82,35 +79,82 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
             
         mealie_token = config_entry_data[CONF_MEALIE_TOKEN]
 
-        # Dynamische Ausschlussliste aus den Optionen ziehen und alles in Kleinbuchstaben wandeln
         ui_exclusions = config_entry_data.get("excluded_foods_list", [])
         basics_to_ignore = [item.lower() for item in ui_exclusions] if ui_exclusions else DEFAULT_BASICS
 
         grocy_headers = {"GROCY-API-KEY": grocy_token}
         mealie_headers = {"Authorization": f"Bearer {mealie_token}"}
 
+        # =====================================================================
+        # 2. MEALIE SPEISEPLAN ABRUFEN (STRIKTE VALIDIERUNG)
+        # =====================================================================
+        today = datetime.now().date()
+        end_date = today + timedelta(days=8)
+        mealplan_url = f"{mealie_url}/api/households/mealplans?startTime={today}&endTime={end_date}"
+        
+        planned_identifiers = set()
+        invalid_keywords = {"none", "null", "string", ""}
+
+        try:
+            async with self.session.get(mealplan_url, headers=mealie_headers, timeout=10) as res:
+                if res.status == 200:
+                    raw_data = await res.json()
+                    
+                    items = []
+                    if isinstance(raw_data, list):
+                        items = raw_data
+                    elif isinstance(raw_data, dict):
+                        items = raw_data.get("items", raw_data.get("data", []))
+                    
+                    if isinstance(items, list):
+                        for plan in items:
+                            if not isinstance(plan, dict):
+                                continue
+                            
+                            # 1. Hauptebene: recipeId extrahieren
+                            r_id = plan.get("recipeId")
+                            if r_id:
+                                s_id = str(r_id).strip().lower()
+                                if s_id not in invalid_keywords and len(s_id) > 5:
+                                    planned_identifiers.add(s_id)
+                            
+                            # 2. Unterebene: recipe -> id / slug extrahieren
+                            recipe_obj = plan.get("recipe")
+                            if isinstance(recipe_obj, dict):
+                                for key in ["id", "slug"]:
+                                    val = recipe_obj.get(key)
+                                    if val:
+                                        s_val = str(val).strip().lower()
+                                        if s_val not in invalid_keywords and len(s_val) > 2:
+                                            planned_identifiers.add(s_val)
+                                            
+                        _LOGGER.info("Gültige blockierte IDs im Speiseplan: %s", planned_identifiers)
+                else:
+                    _LOGGER.warning("Speiseplan-API nicht erreichbar (%s)", res.status)
+        except Exception as err:
+            _LOGGER.error("Fehler im Speiseplan-Filter: %s", err)
+
+        # =====================================================================
+        # 3. GROCY BESTAND ABRUFEN
+        # =====================================================================
         try:
             async with self.session.get(f"{grocy_url}/api/stock", headers=grocy_headers, timeout=15) as res:
                 if res.status != 200:
-                    hash_err = await res.text()
-                    raise Exception(f"Grocy API Fehler: {res.status} - {hash_err}")
+                    raise Exception(f"Grocy API Fehler: {res.status}")
                 grocy_data = await res.json()
         except Exception as err:
             raise Exception(f"Verbindung zu Grocy fehlgeschlagen: {err}")
 
         grocy_products_map = {}
-        now = datetime.now().date()
-        in_one_month = now + timedelta(days=30)
+        in_one_month = today + timedelta(days=30)
 
         for item in (grocy_data or []):
             if isinstance(item, dict) and "product" in item:
                 product_name = item.get("product", {}).get("name")
                 if product_name:
                     orig_name = str(product_name).strip()
-                    
                     is_expiring_soon = False
                     bbd_str = item.get("best_before_date")
-                    
                     if bbd_str:
                         try:
                             if not bbd_str.startswith("2999"):
@@ -119,12 +163,11 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                                     is_expiring_soon = True
                         except ValueError:
                             pass
+                    grocy_products_map[orig_name.lower()] = {"orig_name": orig_name, "expiring": is_expiring_soon}
 
-                    grocy_products_map[orig_name.lower()] = {
-                        "orig_name": orig_name,
-                        "expiring": is_expiring_soon
-                    }
-
+        # =====================================================================
+        # 4. MEALIE REZEPTE ABRUFEN
+        # =====================================================================
         try:
             async with self.session.get(f"{mealie_url}/api/recipes?perPage=-1", headers=mealie_headers, timeout=15) as res:
                 if res.status != 200:
@@ -143,12 +186,31 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         full_recipes = await asyncio.gather(*tasks)
         full_recipes = [r for r in full_recipes if r is not None]
 
+        # =====================================================================
+        # 5. MATCHING ALGORITHMUS (PRÄZISER VERGLEICH)
+        # =====================================================================
         results = []
 
         for recipe in full_recipes:
             if not isinstance(recipe, dict):
                 continue
                 
+            r_id = recipe.get("id")
+            r_recipe_id = recipe.get("recipeId")
+            r_slug = recipe.get("slug")
+            
+            # Rezept ausschließen, wenn eine ECHTE ID im Speiseplan existiert
+            is_planned = False
+            for identifier in [r_id, r_recipe_id, r_slug]:
+                if identifier:
+                    s_ident = str(identifier).strip().lower()
+                    if s_ident in planned_identifiers:
+                        is_planned = True
+                        break
+            
+            if is_planned:
+                continue
+
             all_ingredients = recipe.get("recipeIngredient") or recipe.get("recipeIngredients") or []
             
             relevant_ingredients = []
@@ -156,7 +218,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                 if not isinstance(ing, dict):
                     continue
                 text = (ing.get("note") or ing.get("display") or ing.get("originalText") or "").lower()
-                # Nutzt jetzt die dynamische Liste aus der UI
                 if text and not any(basic in text for basic in basics_to_ignore):
                     relevant_ingredients.append(ing)
 
@@ -174,11 +235,8 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                 ing_words = [w for w in re.split(r"[\s,()./]+", ing_text_low) if len(w) > 2]
 
                 found_product_info = None
-                
                 for stock_low, info in grocy_products_map.items():
-                    if stock_low in ing_words or \
-                       any(word == stock_low for word in ing_words) or \
-                       (len(stock_low) > 4 and stock_low in ing_text_low):
+                    if stock_low in ing_words or any(word == stock_low for word in ing_words) or (len(stock_low) > 4 and stock_low in ing_text_low):
                         found_product_info = info
                         break
 
@@ -192,20 +250,22 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
 
             if match_count > 0:
                 score = round((match_count / len(relevant_ingredients)) * 100)
-                
                 if has_expiring_ingredient:
                     score += 15
                     if score > 100:
                         score = 100
 
+                ui_recipe_id = str(r_recipe_id or r_id).strip()
+
                 results.append({
+                    "recipeId": ui_recipe_id,
                     "recipeName": recipe.get("name", "Unbekanntes Rezept"),
                     "matchScore": score,
                     "matchCount": match_count,
                     "relevantTotal": len(relevant_ingredients),
                     "matchingIngredients": list(set(matching_details)),
                     "missingIngredients": missing_details,
-                    "url": f"{mealie_url}/g/home/r/{recipe.get('slug', '')}",
+                    "url": f"{mealie_url}/g/home/r/{r_slug or ''}",
                     "hasExpiring": has_expiring_ingredient
                 })
 
@@ -225,35 +285,11 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> int:
-        """Return the number of total matching recipes."""
         return len(self.coordinator.data) if self.coordinator.data else 0
 
     @property
     def extra_state_attributes(self) -> dict:
-        """Return device state attributes."""
-        top_recipes = self.coordinator.data[:5] if self.coordinator.data else []
-        
-        markdown = "### 🍳 Koch-Vorschläge für heute\n"
-        markdown += "*Abgleich mit deinem Grocy-Bestand*\n"
-        markdown += "---\n\n"
-
-        for r in top_recipes:
-            markdown += f"**{r['recipeName'].upper()}**\n"
-            markdown += f"📊 Score: **{r['matchScore']}%**\n"
-            
-            formatted_ingredients = [str(i).capitalize() for i in r['matchingIngredients']]
-            markdown += f"✅ Vorhanden: `{', '.join(formatted_ingredients)}`\n"
-            
-            if r["missingIngredients"]:
-                ingredients_str = ", ".join(r["missingIngredients"])
-                markdown += f"🛒 Einkaufen: *{ingredients_str}*\n"
-                
-            markdown += f"👉 [Rezept öffnen]({r['url']})\n\n"
-            markdown += "---\n"
-
-        markdown += "*🤖 Generiert über Mealie-Grocy Bridge Integration*"
-
         return {
             "recipes": self.coordinator.data if self.coordinator.data else [],
-            "markdown_suggestions": markdown
+            "markdown_suggestions": ""
         }
