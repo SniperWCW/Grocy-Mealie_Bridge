@@ -1,0 +1,3 @@
+sync_shopping_list:
+  name: Einkaufsliste synchronisieren
+  description: Gleicht die Grocy-Mindestbestände mit der Bring-Liste in Home Assistant ab und fügt fehlende Artikel hinzu.
