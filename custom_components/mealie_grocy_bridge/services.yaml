@@ -1,3 +1,10 @@
-sync_shopping_list:
-  name: Einkaufsliste synchronisieren
-  description: Gleicht die Grocy-Mindestbestände mit der Bring-Liste in Home Assistant ab und fügt fehlende Artikel hinzu.
+add_missing_ingredients:
+  name: Fehlende Zutaten zu Bring hinzufügen
+  description: Packt die fehlenden Zutaten eines spezifischen Rezepts auf die Bring-Liste.
+  fields:
+    ingredients:
+      name: Zutaten
+      description: Die Liste der fehlenden Zutaten als Text oder Array.
+      required: true
+      selector:
+        object: {}
