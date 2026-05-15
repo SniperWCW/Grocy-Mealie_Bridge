@@ -26,7 +26,7 @@ BASICS_TO_IGNORE = [
     "salz", "pfeffer", "wasser", "öl", "zucker", "mehl", "gewürz", "prise", "etwas",
     "kümmel", "sasilikum", "cayennepfeffer", "chilli", "curry", "honig", "koriander",
     "kurkuma", "majoran", "meersalz", "muskat", "oregano", "paprikapulver",
-    "petersilie", "schnittlauch", "thymian"
+    "petersilie", "schnittlauch", "thymian", "zwiebel", "knoblauch"
 ]
 
 async def async_setup_entry(
