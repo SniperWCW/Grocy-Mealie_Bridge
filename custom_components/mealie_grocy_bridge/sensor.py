@@ -196,6 +196,7 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
         return len(self.coordinator.data) if self.coordinator.data else 0
 
     @property
+    @property
     def extra_state_attributes(self) -> dict:
         """Return device state attributes."""
         if not self.coordinator.data:
@@ -218,7 +219,7 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
                 ingredients_str = ", ".join(r["missingIngredients"])
                 markdown += f"🛒 Einkaufen: *{ingredients_str}*\n"
                 
-                # REPARATUR: Ein sauberer, klickbarer Markdown-Link ohne störende Sonderzeichen-Verschachtelung
+                # REPARATUR: Ein sauberer Link ohne die störenden Sonderzeichen (%7B%22...)
                 markdown += f"➕ [Zutaten auf Bring-Liste setzen](/developer-tools/action?service=mealie_grocy_bridge.add_missing_ingredients&ingredients={ingredients_str})\n"
                 
             markdown += f"👉 [Rezept öffnen]({r['url']})\n\n"
