@@ -115,17 +115,18 @@ cards:
     columns: 2
     square: false
     cards:
-      # REZEPT 1
       - type: vertical-stack
         cards:
           - type: markdown
             content: >-
-              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage', 'recipes') %} 
-              {% if recipes and recipes|length > 0 %}
+              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage',
+              'recipes') %}  {% if recipes and recipes|length > 0 %}
                 ### 🍳 {{ recipes[0].recipeName | upper }}
                 📊 Score: **{{ recipes[0].matchScore }}%**
                 ✅ Vorhanden: `{% for ing in recipes[0].matchingIngredients %}{{ ing | capitalize }}{{ ", " if not loop.last }}{% endfor %}`
                 🛒 Einkaufen: *{{ recipes[0].missingIngredients | join(', ') }}*
+                
+                🔗 **[👉 REZEPT IN MEALIE ÖFFNEN]({{ recipes[0].url }})**
               {% else %}
                 ### 🍳 Kein Rezept gefunden
               {% endif %}
@@ -134,13 +135,6 @@ cards:
             square: false
             cards:
               - type: button
-                name: Rezept öffnen
-                icon: mdi:chef-hat
-                tap_action:
-                  action: url
-                  url_path: >-
-                    {{ state_attr('sensor.mealie_grocy_kochvorschlage', 'recipes')[0].url if state_attr('sensor.mealie_grocy_kochvorschlage', 'recipes') else '#' }}
-              - type: button
                 name: Auf Bring
                 icon: mdi:cart-plus
                 tap_action:
@@ -148,32 +142,24 @@ cards:
                   service: script.zutaten_auf_to_do_liste_setzen
                   data:
                     recipe_index: 0
-
-      # REZEPT 2
       - type: vertical-stack
         cards:
           - type: markdown
             content: >-
-              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage', 'recipes') %} 
-              {% if recipes and recipes|length > 1 %}
+              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage',
+              'recipes') %} {% if recipes and recipes|length > 1 %}
                 ### 🍳 {{ recipes[1].recipeName | upper }}
                 📊 Score: **{{ recipes[1].matchScore }}%**
                 ✅ Vorhanden: `{% for ing in recipes[1].matchingIngredients %}{{ ing | capitalize }}{{ ", " if not loop.last }}{% endfor %}`
                 🛒 Einkaufen: *{{ recipes[1].missingIngredients | join(', ') }}*
+                🔗 **[👉 REZEPT IN MEALIE ÖFFNEN]({{ recipes[1].url }})**
               {% else %}
-                ### 🍳 -
+                ### 🍳 Kein Rezept gefunden
               {% endif %}
           - type: grid
             columns: 2
             square: false
             cards:
-              - type: button
-                name: Rezept öffnen
-                icon: mdi:chef-hat
-                tap_action:
-                  action: url
-                  url_path: >-
-                    {{ state_attr('sensor.mealie_grocy_kochvorschlage', 'recipes')[1].url if state_attr('sensor.mealie_grocy_kochvorschlage', 'recipes') and state_attr('sensor.mealie_grocy_kochvorschlage', 'recipes')|length > 1 else '#' }}
               - type: button
                 name: Auf Bring
                 icon: mdi:cart-plus
@@ -182,32 +168,25 @@ cards:
                   service: script.zutaten_auf_to_do_liste_setzen
                   data:
                     recipe_index: 1
-
-      # REZEPT 3
       - type: vertical-stack
         cards:
           - type: markdown
             content: >-
-              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage', 'recipes') %} 
-              {% if recipes and recipes|length > 2 %}
+              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage',
+              'recipes') %} {% if recipes and recipes|length > 2 %}
                 ### 🍳 {{ recipes[2].recipeName | upper }}
                 📊 Score: **{{ recipes[2].matchScore }}%**
                 ✅ Vorhanden: `{% for ing in recipes[2].matchingIngredients %}{{ ing | capitalize }}{{ ", " if not loop.last }}{% endfor %}`
                 🛒 Einkaufen: *{{ recipes[2].missingIngredients | join(', ') }}*
+                
+                🔗 **[👉 REZEPT IN MEALIE ÖFFNEN]({{ recipes[2].url }})**
               {% else %}
-                ### 🍳 -
+                ### 🍳 Kein Rezept gefunden
               {% endif %}
           - type: grid
             columns: 2
             square: false
             cards:
-              - type: button
-                name: Rezept öffnen
-                icon: mdi:chef-hat
-                tap_action:
-                  action: url
-                  url_path: >-
-                    {{ state_attr('sensor.mealie_grocy_kochvorschlage', 'recipes')[2].url if state_attr('sensor.mealie_grocy_kochvorschlage', 'recipes') and state_attr('sensor.mealie_grocy_kochvorschlage', 'recipes')|length > 2 else '#' }}
               - type: button
                 name: Auf Bring
                 icon: mdi:cart-plus
@@ -216,32 +195,25 @@ cards:
                   service: script.zutaten_auf_to_do_liste_setzen
                   data:
                     recipe_index: 2
-
-      # REZEPT 4
       - type: vertical-stack
         cards:
           - type: markdown
             content: >-
-              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage', 'recipes') %} 
-              {% if recipes and recipes|length > 3 %}
+              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage',
+              'recipes') %} {% if recipes and recipes|length > 3 %}
                 ### 🍳 {{ recipes[3].recipeName | upper }}
                 📊 Score: **{{ recipes[3].matchScore }}%**
                 ✅ Vorhanden: `{% for ing in recipes[3].matchingIngredients %}{{ ing | capitalize }}{{ ", " if not loop.last }}{% endfor %}`
                 🛒 Einkaufen: *{{ recipes[3].missingIngredients | join(', ') }}*
+                
+                🔗 **[👉 REZEPT IN MEALIE ÖFFNEN]({{ recipes[3].url }})**
               {% else %}
-                ### 🍳 -
+                ### 🍳 Kein Rezept gefunden
               {% endif %}
           - type: grid
             columns: 2
             square: false
             cards:
-              - type: button
-                name: Rezept öffnen
-                icon: mdi:chef-hat
-                tap_action:
-                  action: url
-                  url_path: >-
-                    {{ state_attr('sensor.mealie_grocy_kochvorschlage', 'recipes')[3].url if state_attr('sensor.mealie_grocy_kochvorschlage', 'recipes') and state_attr('sensor.mealie_grocy_kochvorschlage', 'recipes')|length > 3 else '#' }}
               - type: button
                 name: Auf Bring
                 icon: mdi:cart-plus
@@ -256,6 +228,7 @@ cards:
 grid_options:
   columns: 24
   rows: auto
+
 
 ````
 ⚙️ Voraussetzungen Frontend
