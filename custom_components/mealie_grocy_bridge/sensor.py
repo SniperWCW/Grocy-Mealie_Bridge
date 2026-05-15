@@ -202,6 +202,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                     "matchingIngredients": list(set(matching_details)),
                     "missingIngredients": missing_details,
                     "url": f"{mealie_url}/g/home/r/{recipe.get('slug', '')}"
+                    "hasExpiring": has_expiring_ingredient
                 })
 
         # Sortiert nach dem neuen, manipulierten Score (Rezepte mit ablaufenden Waren rutschen nach oben)
