@@ -1,10 +1,10 @@
 add_missing_ingredients:
   name: Fehlende Zutaten zu Bring hinzufügen
-  description: Packt die fehlenden Zutaten eines spezifischen Rezepts auf die Bring-Liste.
+  description: Packt die fehlenden Zutaten eines spezifischen Rezepts direkt auf die Bring-Liste.
   fields:
     ingredients:
       name: Zutaten
-      description: Die Liste der fehlenden Zutaten als Text oder Array.
+      description: Die fehlenden Zutaten als Text (kommagetrennt) oder Liste.
       required: true
       selector:
         object: {}
