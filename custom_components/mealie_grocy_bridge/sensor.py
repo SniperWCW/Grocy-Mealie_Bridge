@@ -199,9 +199,12 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
     def extra_state_attributes(self) -> dict:
         """Return device state attributes."""
         if not self.coordinator.data:
-            return {"recipes": [], "markdown_suggestions": "Keine passenden Rezepte gefunden. 🍕"}
+            return {"recipes": []}
 
-        top_recipes = self.coordinator.data[:5]
+        # Wir geben einfach nur die Top 5 Rezepte als Rohdaten weiter
+        return {
+            "recipes": self.coordinator.data[:5]
+        }
         
         # Direktes Generieren des Markdown-Texts für dein Lovelace-Dashboard
         markdown = "### 🍳 Koch-Vorschläge für heute\n"
