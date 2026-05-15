@@ -3,7 +3,7 @@ from datetime import timedelta
 import logging
 import re
 import asyncio
-import urllib.parse  # Für die saubere URL-Codierung der Zutaten
+import urllib.parse
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -82,7 +82,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         grocy_headers = {"GROCY-API-KEY": grocy_token}
         mealie_headers = {"Authorization": f"Bearer {mealie_token}"}
 
-        # 1. Grocy Bestand abrufen
         try:
             async with self.session.get(f"{grocy_url}/api/stock", headers=grocy_headers, timeout=15) as res:
                 if res.status != 200:
@@ -92,7 +91,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         except Exception as err:
             raise Exception(f"Verbindung zu Grocy fehlgeschlagen: {err}")
 
-        # Mapping erstellen
         grocy_products_map = {}
         for item in (grocy_data or []):
             if isinstance(item, dict) and "product" in item:
@@ -101,7 +99,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                     orig_name = str(product_name).strip()
                     grocy_products_map[orig_name.lower()] = orig_name
 
-        # 2. Mealie Rezeptliste abrufen
         try:
             async with self.session.get(f"{mealie_url}/api/recipes?perPage=-1", headers=mealie_headers, timeout=15) as res:
                 if res.status != 200:
@@ -120,7 +117,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         full_recipes = await asyncio.gather(*tasks)
         full_recipes = [r for r in full_recipes if r is not None]
 
-        # 3. Matching-Algorithmus
         results = []
 
         for recipe in full_recipes:
@@ -218,10 +214,8 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
                 ingredients_str = ", ".join(r["missingIngredients"])
                 markdown += f"🛒 Einkaufen: *{ingredients_str}*\n"
                 
-                # Hier werden die Zutaten URL-konform codiert (Leerzeichen zu %20 etc.)
+                # Zutaten sicher für URL codieren
                 encoded_ingredients = urllib.parse.quote(ingredients_str)
-                
-                # REPARATUR: Sauberer, valider Markdown-Link ohne HTML-Müll
                 markdown += f"➕ [Zutaten auf Bring-Liste setzen](/developer-tools/action?service=mealie_grocy_bridge.add_missing_ingredients&ingredients={encoded_ingredients})\n"
                 
             markdown += f"👉 [Rezept öffnen]({r['url']})\n\n"
