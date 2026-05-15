@@ -8,3 +8,14 @@ add_missing_ingredients:
       required: true
       selector:
         object: {}
+
+set_to_next_free_day:
+  name: "Gericht auf nächsten freien Tag setzen"
+  description: "Findet den nächsten freien Tag im Mealie-Speiseplan und trägt das gewählte Rezept dort ein."
+  fields:
+    recipe_id:
+      name: "Rezept ID"
+      description: "Die ID oder der Slug des Mealie-Rezepts."
+      required: true
+      selector:
+        text:
