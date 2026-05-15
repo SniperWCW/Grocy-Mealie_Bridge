@@ -248,3 +248,9 @@ Für eine fehlerfreie und optisch ansprechende Darstellung im Dashboard werden f
 custom:expander-card (Zur einklappbaren und platzsparenden Strukturierung des Dashboards)
 
 custom:mushroom (Für die kompakte mushroom-chips-card Steuerung der Einkaufsliste)
+
+
+Roadmap:
+1. ausgeschlossene Zutaten in Konfiguration bearbeitbar machen
+2. Essensplan mit aufnehmen um "zu Plan hinzufügen" einzubauen (immer nächster freier Tag)
+2.1 das Rezept soll sobald es die nächsten 7 Tage auf dem Plan steht nicht mehr vorgeschlagen werden. 
