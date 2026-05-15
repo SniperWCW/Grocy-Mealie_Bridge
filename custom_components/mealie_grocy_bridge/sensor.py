@@ -169,7 +169,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                     "relevantTotal": len(relevant_ingredients),
                     "matchingIngredients": list(set(matching_details)),
                     "missingIngredients": missing_details,
-                    "url": f"{mealie_url}/recipe/{recipe.get('slug', '')}"
+                    "url": f"{mealie_url}/g/home/r/{recipe.get('slug', '')}"
                 })
 
         results.sort(key=lambda x: x["matchScore"], reverse=True)
