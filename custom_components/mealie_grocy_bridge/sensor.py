@@ -123,13 +123,19 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         full_recipes = [r for r in full_recipes if r is not None]
 
         # 3. Matching-Algorithmus (1:1 Portierung deiner n8n Logik)
+        # 3. Matching-Algorithmus
         results = []
 
         for recipe in full_recipes:
+            if not isinstance(recipe, dict):
+                continue
+                
             all_ingredients = recipe.get("recipeIngredient") or recipe.get("recipeIngredients") or []
             
             relevant_ingredients = []
             for ing in all_ingredients:
+                if not isinstance(ing, dict):
+                    continue
                 text = (ing.get("note") or ing.get("display") or ing.get("originalText") or "").lower()
                 if text and not any(basic in text for basic in BASICS_TO_IGNORE):
                     relevant_ingredients.append(ing)
@@ -143,42 +149,51 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
 
             for ing in relevant_ingredients:
                 ing_original_text = ing.get("display") or ing.get("note") or ing.get("originalText") or ""
-                ing_text_low = ing_original_text.lower()
+                ing_text_low = str(ing_original_text).lower()
                 ing_words = [w for w in re.split(r"[\s,()./]+", ing_text_low) if len(w) > 2]
 
-                found_stock = None
-                for stock_name in grocy_stock_names:
-                    if stock_name in ing_words:
-                        found_stock = stock_name
-                        break
-                    if any(word == stock_name for word in ing_words):
-                        found_stock = stock_name
-                        break
-                    if len(stock_name) > 4 and stock_name in ing_text_low:
-                        found_stock = stock_name
+                found_stock_display = None
+                # Wir gehen durch die Originaldaten von Grocy, um die korrekte Schreibweise zu erhalten
+                for item in (grocy_data or []):
+                    product = item.get("product")
+                    if not product or not product.get("name"):
+                        continue
+                    
+                    stock_name_original = str(product.get("name")).strip()
+                    stock_name_low = stock_name_original.lower()
+
+                    if len(stock_name_low) <= 1:
+                        continue
+
+                    # Der eigentliche Abgleich (identisch zu vorher, nur mit kleingeschriebener Variable)
+                    if stock_name_low in ing_words or \
+                       any(word == stock_name_low for word in ing_words) or \
+                       (len(stock_name_low) > 4 and stock_name_low in ing_text_low):
+                        found_stock_display = stock_name_original
                         break
 
-                if found_stock:
+                if found_stock_display:
                     match_count += 1
-                    matching_details.append(found_stock)
+                    matching_details.append(found_stock_display)
                 else:
                     missing_details.append(ing_original_text)
 
             if match_count > 0:
                 score = round((match_count / len(relevant_ingredients)) * 100)
                 results.append({
-                    "recipeName": recipe.get("name"),
+                    "recipeName": recipe.get("name", "Unbekanntes Rezept"),
                     "matchScore": score,
                     "matchCount": match_count,
                     "relevantTotal": len(relevant_ingredients),
                     "matchingIngredients": list(set(matching_details)),
                     "missingIngredients": missing_details,
-                    "url": f"{mealie_url}/recipe/{recipe.get('slug')}"
+                    "url": f"{mealie_url}/recipe/{recipe.get('slug', '')}"
                 })
 
-        # Nach Score sortieren
         results.sort(key=lambda x: x["matchScore"], reverse=True)
         return results
+
+########
 
 
 class MealieGrocySensor(CoordinatorEntity, SensorEntity):
