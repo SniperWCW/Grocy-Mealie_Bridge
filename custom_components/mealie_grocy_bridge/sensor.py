@@ -214,13 +214,9 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
                 ingredients_str = ", ".join(r["missingIngredients"])
                 markdown += f"🛒 Einkaufen: *{ingredients_str}*\n"
                 
-                # Zutaten sicher für URL codieren
-                encoded_ingredients = urllib.parse.quote(ingredients_str)
-                markdown += f"➕ [Zutaten auf Bring-Liste setzen](/developer-tools/action?service=mealie_grocy_bridge.add_missing_ingredients&ingredients={encoded_ingredients})\n"
-                
             markdown += f"👉 [Rezept öffnen]({r['url']})\n\n"
+            markdown += "---\n"
 
-        markdown += "---\n"
         markdown += "*🤖 Generiert über Mealie-Grocy Bridge Integration*"
 
         return {
