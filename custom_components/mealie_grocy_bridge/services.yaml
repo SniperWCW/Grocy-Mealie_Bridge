@@ -1,21 +1,27 @@
-add_missing_ingredients:
-  name: Fehlende Zutaten zu Bring hinzufügen
-  description: Packt die fehlenden Zutaten eines spezifischen Rezepts direkt auf die Bring-Liste.
-  fields:
-    ingredients:
-      name: Zutaten
-      description: Die fehlenden Zutaten als Text (kommagetrennt) oder Liste.
-      required: true
-      selector:
-        object: {}
-
 set_to_next_free_day:
-  name: "Gericht auf nächsten freien Tag setzen"
-  description: "Findet den nächsten freien Tag im Mealie-Speiseplan und trägt das gewählte Rezept dort ein."
+  name: "Rezept anhand Index auf nächsten freien Tag setzen"
+  description: "Nimmt den Index des Rezepts aus dem Sensor, bucht es bei Mealie und schickt eine Push-Nachricht."
   fields:
-    recipe_id:
-      name: "Rezept ID"
-      description: "Die ID oder der Slug des Mealie-Rezepts."
+    recipe_index:
+      name: "Rezept Index"
+      description: "Die Position des Rezepts im Kochvorschläge-Sensor (z.B. 0 für das erste Rezept)."
       required: true
       selector:
-        text:
+        number:
+          min: 0
+          max: 20
+          mode: box
+
+add_missing_ingredients:
+  name: "Fehlende Zutaten eines Index auf To-Do-Liste setzen"
+  description: "Liest die fehlenden Zutaten des gewählten Rezept-Index aus und schiebt sie auf die To-Do-Liste."
+  fields:
+    recipe_index:
+      name: "Rezept Index"
+      description: "Die Position des Rezepts im Kochvorschläge-Sensor (z.B. 0 für das erste Rezept)."
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 20
+          mode: box
