@@ -10,6 +10,7 @@ from .const import (
     DOMAIN,
     CONF_MEALIE_URL,
     CONF_MEALIE_TOKEN,
+    CONF_TODO_ENTITY,  # NEU: Importiere den Key für die konfigurierte To-Do-Liste
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # DIENST 1: Fehlende Zutaten via INDEX auf die To-Do-Liste setzen
     # =====================================================================
     async def handle_add_missing_ingredients(call: ServiceCall):
-        """Liest fehlende Zutaten eines Rezept-Index aus und schickt sie an todo.stuttgart."""
+        """Liest fehlende Zutaten eines Rezept-Index aus und schickt sie an die konfigurierte To-Do-Liste."""
         recipe_index = int(call.data.get("recipe_index", 0))
         recipe = get_recipe_by_index(recipe_index)
         
@@ -60,7 +61,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.info("Keine fehlenden Zutaten für '%s' vorhanden.", recipe.get("recipeName"))
             return
 
-        _LOGGER.info("Füge fehlende Zutaten für '%s' zu To-Do-Liste hinzu: %s", recipe.get("recipeName"), missing_ingredients)
+        # NEU: Aktuelle Konfiguration laden und die ausgewählte To-Do-Liste auslesen
+        current_config = hass.data[DOMAIN][entry.entry_id]
+        todo_entity = current_config.get(CONF_TODO_ENTITY)
+
+        # Fallback: Falls der Nutzer in den Optionen noch keine Liste gewählt hat
+        if not todo_entity:
+            _LOGGER.warning("Keine To-Do-Liste in den Integrations-Optionen ausgewählt! Nutze Standardliste 'todo.stuttgart'.")
+            todo_entity = "todo.stuttgart"
+
+        _LOGGER.info("Füge fehlende Zutaten für '%s' zur To-Do-Liste '%s' hinzu: %s", recipe.get("recipeName"), todo_entity, missing_ingredients)
 
         for ingredient in missing_ingredients:
             if not ingredient:
@@ -70,14 +80,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "todo",
                     "add_item",
                     {
-                        "entity_id": "todo.stuttgart",
+                        "entity_id": todo_entity,  # NEU: Dynamische Variable statt festem Text "todo.stuttgart"
                         "item": str(ingredient),
                         "description": f"Aus Mealie Rezeptvorschlag: {recipe.get('recipeName')}"
                     },
                     blocking=True
                 )
             except Exception as err:
-                _LOGGER.error("Fehler beim Hinzufügen von '%s' zur To-Do-Liste: %s", ingredient, err)
+                _LOGGER.error("Fehler beim Hinzufügen von '%s' zur To-Do-Liste '%s': %s", ingredient, todo_entity, err)
 
     # =====================================================================
     # DIENST 2: Rezept via INDEX auf den nächsten freien Tag setzen + Notify
@@ -149,13 +159,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             "notify",
                             {
                                 "title": "🍳 Mealie Speiseplan",
-                                "message": f'"{recipe_name}" wurde erfolgreich für den {target_date.strftime("%d.%m.%r" if False else "%d.%m.%Y")} eingetragen!'
+                                "message": f'"{recipe_name}" wurde erfolgreich für den {target_date.strftime("%d.%m.%Y")} eingetragen!'
                             }
                         )
                     except Exception as notify_err:
                         _LOGGER.error("Konnte Push-Nachricht nicht senden: %s", notify_err)
 
-                    # 4. Sensor SOFORT aktualisieren (ohne Integration Reload)
+                    # 4. Sensor SOFORT aktualisieren
                     coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
                     if coordinator:
                         _LOGGER.info("Triggere sofortigen Sensor-Refresh...")
