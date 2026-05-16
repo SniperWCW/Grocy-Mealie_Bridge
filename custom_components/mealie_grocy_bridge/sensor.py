@@ -34,6 +34,10 @@ async def async_setup_entry(
     """Set up the sensor platform."""
     coordinator = MealieGrocyBridgeCoordinator(hass, entry.entry_id)
     await coordinator.async_config_entry_first_refresh()
+
+    # NEU: Coordinator für die __init__.py bereitstellen
+    hass.data[DOMAIN]["coordinator"] = coordinator
+
     async_add_entities([MealieGrocySensor(coordinator, entry.entry_id)], True)
 
 
