@@ -233,8 +233,10 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                 found_product_info = None
                 
                 for stock_low, info in grocy_products_map.items():
-                    # 1. DIREKT-MATCH (Exakter Treffer im Text)
-                    if stock_low in ing_text_low:
+                    # 1. DIREKT-MATCH (Exakter Treffer im Text mit Wortgrenzen)
+                    # Verhindert z.B. dass "Senf" fälschlicherweise in "Senfsamen" matcht
+                    # Aber erlaubt "Senf" in "Mittelscharfer Senf"
+                    if re.search(r'\b' + re.escape(stock_low) + r'\b', ing_text_low):
                         found_product_info = info
                         break
                         
@@ -244,11 +246,18 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                         found_product_info = info
                         break
                         
-                    # 3. TEILWORT-MATCH FÜR ZUSAMMENGESETZTE WÖRTER (Mealie: "Mehl" -> Grocy: "Weizenmehl")
+                    # 3. TEILWORT-MATCH FÜR COMPREHENSIVE COMPOSITION (z.B. Mealie: "Mehl" -> Grocy: "Weizenmehl")
+                    # Optimierung: Matcht nur, wenn das Rezept-Wort am ENDE des Grocy-Produktworts steht 
+                    # oder ein eigenständiges Wort darin bildet (z.B. "weizenmehl", "senf", "dijonsenf").
+                    # Verhindert Fehlmatches wenn es am Anfang steht und weitergeht (z.B. "senfsamen", "senfkörner").
                     for word in ing_words:
-                        if len(word) >= 4 and word in stock_low:
-                            found_product_info = info
-                            break
+                        if len(word) >= 4:
+                            # Erstellt eine Regex die prüft ob das Wort am Ende eines Wortes steht 
+                            # (z.B. "weizenmehl" für "mehl" oder "dijonsenf" für "senf")
+                            # aber NICHT wenn danach noch Buchstaben folgen ("senfsamen")
+                            if re.search(re.escape(word) + r'\b', stock_low):
+                                found_product_info = info
+                                break
                     if found_product_info:
                         break
 
