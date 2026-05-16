@@ -44,7 +44,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.error("Fehler beim Auslesen des Rezept-Index: %s", err)
         return None
 
-    # =====================================================================
+# =====================================================================
     # DIENST 1: Fehlende Zutaten via INDEX auf die To-Do-Liste setzen
     # =====================================================================
     async def handle_add_missing_ingredients(call: ServiceCall):
@@ -61,7 +61,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.info("Keine fehlenden Zutaten für '%s' vorhanden.", recipe.get("recipeName"))
             return
 
-        # NEU: Aktuelle Konfiguration laden und die ausgewählte To-Do-Liste auslesen
+        # Aktuelle Konfiguration laden und die ausgewählte To-Do-Liste auslesen
         current_config = hass.data[DOMAIN][entry.entry_id]
         todo_entity = current_config.get(CONF_TODO_ENTITY)
 
@@ -72,6 +72,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         _LOGGER.info("Füge fehlende Zutaten für '%s' zur To-Do-Liste '%s' hinzu: %s", recipe.get("recipeName"), todo_entity, missing_ingredients)
 
+        added_count = 0  # Zähler für erfolgreiche Zutaten
+
         for ingredient in missing_ingredients:
             if not ingredient:
                 continue
@@ -80,14 +82,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "todo",
                     "add_item",
                     {
-                        "entity_id": todo_entity,  # NEU: Dynamische Variable statt festem Text "todo.stuttgart"
+                        "entity_id": todo_entity,
                         "item": str(ingredient),
-                        "description": f"Aus Mealie Rezeptvorschlag: {recipe.get('recipeName')}"
+                        "description": f"für {recipe.get('recipeName')}"
                     },
                     blocking=True
                 )
+                added_count += 1  # Erfolgreich hinzugefügt -> hochzählen
             except Exception as err:
                 _LOGGER.error("Fehler beim Hinzufügen von '%s' zur To-Do-Liste '%s': %s", ingredient, todo_entity, err)
+
+        # NEU: Native Push-Benachrichtigung absetzen (nur wenn mindestens eine Zutat hinzugefügt wurde)
+        if added_count > 0:
+            try:
+                # Schönen lesbaren Namen für die Liste extrahieren (z.B. "stuttgart" statt "todo.stuttgart")
+                friendly_list_name = todo_entity.split(".")[-1].replace("_", " ").title()
+                
+                await hass.services.async_call(
+                    "notify",
+                    "notify",
+                    {
+                        "title": "🛒 Einkaufsliste aktualisiert",
+                        "message": f"{added_count} fehlende Zutat(en) für '{recipe.get('recipeName')}' wurden zur Liste '{friendly_list_name}' hinzugefügt!"
+                    }
+                )
+                _LOGGER.info("Erfolgreich Push-Nachricht für hinzugefügte Zutaten gesendet.")
+            except Exception as notify_err:
+                _LOGGER.error("Konnte Push-Nachricht für Einkaufsliste nicht senden: %s", notify_err)
 
     # =====================================================================
     # DIENST 2: Rezept via INDEX auf den nächsten freien Tag setzen + Notify
