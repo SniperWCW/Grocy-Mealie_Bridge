@@ -53,6 +53,8 @@ Der Sensor läuft über einen `DataUpdateCoordinator` und fragt standardmäßig 
 ## 📺 Frontend-Beispiele (Lovelace Dashboard)
 
 Für die Darstellung auf dem Dashboard steht ein Design zur Verfügung, welches die `custom:expander-card` nutzt, um im Dashboard massiv Platz zu sparen und die Vorschläge kompakt anzuordnen.
+<img width="660" height="348" alt="image" src="https://github.com/user-attachments/assets/90f57e97-50c5-4b4b-bf89-33a2d8ccecd8" />
+
 
 ```yaml
 type: custom:expander-card
