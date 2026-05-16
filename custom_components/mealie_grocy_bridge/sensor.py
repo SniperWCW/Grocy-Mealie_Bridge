@@ -86,7 +86,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         mealie_headers = {"Authorization": f"Bearer {mealie_token}"}
 
         # =====================================================================
-        # 2. MEALIE SPEISEPLAN ABRUFEN (STRIKTE VALIDIERUNG)
+        # 2. MEALIE SPEISEPLAN ABRUFEN
         # =====================================================================
         today = datetime.now().date()
         end_date = today + timedelta(days=8)
@@ -99,7 +99,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
             async with self.session.get(mealplan_url, headers=mealie_headers, timeout=10) as res:
                 if res.status == 200:
                     raw_data = await res.json()
-                    
                     items = []
                     if isinstance(raw_data, list):
                         items = raw_data
@@ -110,15 +109,11 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                         for plan in items:
                             if not isinstance(plan, dict):
                                 continue
-                            
-                            # 1. Hauptebene: recipeId extrahieren
                             r_id = plan.get("recipeId")
                             if r_id:
                                 s_id = str(r_id).strip().lower()
                                 if s_id not in invalid_keywords and len(s_id) > 5:
                                     planned_identifiers.add(s_id)
-                            
-                            # 2. Unterebene: recipe -> id / slug extrahieren
                             recipe_obj = plan.get("recipe")
                             if isinstance(recipe_obj, dict):
                                 for key in ["id", "slug"]:
@@ -127,10 +122,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                                         s_val = str(val).strip().lower()
                                         if s_val not in invalid_keywords and len(s_val) > 2:
                                             planned_identifiers.add(s_val)
-                                            
-                        _LOGGER.info("Gültige blockierte IDs im Speiseplan: %s", planned_identifiers)
-                else:
-                    _LOGGER.warning("Speiseplan-API nicht erreichbar (%s)", res.status)
         except Exception as err:
             _LOGGER.error("Fehler im Speiseplan-Filter: %s", err)
 
@@ -187,7 +178,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         full_recipes = [r for r in full_recipes if r is not None]
 
         # =====================================================================
-        # 5. MATCHING ALGORITHMUS (PRÄZISER VERGLEICH)
+        # 5. MATCHING ALGORITHMUS (ULTRA-INTELLIGENTER ABGLEICH)
         # =====================================================================
         results = []
 
@@ -199,7 +190,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
             r_recipe_id = recipe.get("recipeId")
             r_slug = recipe.get("slug")
             
-            # Rezept ausschließen, wenn eine ECHTE ID im Speiseplan existiert
             is_planned = False
             for identifier in [r_id, r_recipe_id, r_slug]:
                 if identifier:
@@ -221,8 +211,8 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                 if text and not any(basic in text for basic in basics_to_ignore):
                     relevant_ingredients.append(ing)
 
-            if not relevant_ingredients:
-                continue
+                if not relevant_ingredients:
+                    continue
 
             match_count = 0
             has_expiring_ingredient = False
@@ -232,12 +222,30 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
             for ing in relevant_ingredients:
                 ing_original_text = ing.get("display") or ing.get("note") or ing.get("originalText") or ""
                 ing_text_low = str(ing_original_text).lower()
-                ing_words = [w for w in re.split(r"[\s,()./]+", ing_text_low) if len(w) > 2]
+                
+                # Mealie-Wörter splitten (Zahlen und Mini-Wörter ignorieren)
+                ing_words = [w for w in re.split(r"[\s,()./]+", ing_text_low) if len(w) > 2 and not w.isdigit()]
 
                 found_product_info = None
+                
                 for stock_low, info in grocy_products_map.items():
-                    if stock_low in ing_words or any(word == stock_low for word in ing_words) or (len(stock_low) > 4 and stock_low in ing_text_low):
+                    # 1. DIREKT-MATCH (Exakter Treffer im Text)
+                    if stock_low in ing_text_low:
                         found_product_info = info
+                        break
+                        
+                    # 2. SPLITTING FÜR BINDESTRICHE (z.B. "Nudeln - Farfalle")
+                    stock_parts = [p.strip() for p in re.split(r"[\-,._]+", stock_low) if len(p.strip()) > 2]
+                    if stock_parts and stock_parts[0] in ing_words:
+                        found_product_info = info
+                        break
+                        
+                    # 3. TEILWORT-MATCH FÜR ZUSAMMENGESETZTE WÖRTER (Mealie: "Mehl" -> Grocy: "Weizenmehl")
+                    for word in ing_words:
+                        if len(word) >= 4 and word in stock_low:
+                            found_product_info = info
+                            break
+                    if found_product_info:
                         break
 
                 if found_product_info:
