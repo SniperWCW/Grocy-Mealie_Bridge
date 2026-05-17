@@ -215,8 +215,8 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                 if text and not any(basic in text for basic in basics_to_ignore):
                     relevant_ingredients.append(ing)
 
-                if not relevant_ingredients:
-                    continue
+            if not relevant_ingredients:
+                continue
 
             match_count = 0
             has_expiring_ingredient = False
@@ -232,34 +232,38 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
 
                 found_product_info = None
                 
+                # -----------------------------------------------------------------
+                # DURCHLAUF 1: STRIKTE DIREKT-MATCHES (Exakter Texttreffer über Wortgrenzen)
+                # -----------------------------------------------------------------
                 for stock_low, info in grocy_products_map.items():
-                    # 1. DIREKT-MATCH (Exakter Treffer im Text mit Wortgrenzen)
-                    # Verhindert z.B. dass "Senf" fälschlicherweise in "Senfsamen" matcht
-                    # Aber erlaubt "Senf" in "Mittelscharfer Senf"
                     if re.search(r'\b' + re.escape(stock_low) + r'\b', ing_text_low):
                         found_product_info = info
                         break
                         
-                    # 2. SPLITTING FÜR BINDESTRICHE (z.B. "Nudeln - Farfalle")
-                    stock_parts = [p.strip() for p in re.split(r"[\-,._]+", stock_low) if len(p.strip()) > 2]
-                    if stock_parts and stock_parts[0] in ing_words:
-                        found_product_info = info
-                        break
-                        
-                    # 3. TEILWORT-MATCH FÜR COMPREHENSIVE COMPOSITION (z.B. Mealie: "Mehl" -> Grocy: "Weizenmehl")
-                    # Optimierung: Matcht nur, wenn das Rezept-Wort am ENDE des Grocy-Produktworts steht 
-                    # oder ein eigenständiges Wort darin bildet (z.B. "weizenmehl", "senf", "dijonsenf").
-                    # Verhindert Fehlmatches wenn es am Anfang steht und weitergeht (z.B. "senfsamen", "senfkörner").
-                    for word in ing_words:
-                        if len(word) >= 4:
-                            # Erstellt eine Regex die prüft ob das Wort am Ende eines Wortes steht 
-                            # (z.B. "weizenmehl" für "mehl" oder "dijonsenf" für "senf")
-                            # aber NICHT wenn danach noch Buchstaben folgen ("senfsamen")
-                            if re.search(re.escape(word) + r'\b', stock_low):
-                                found_product_info = info
-                                break
-                    if found_product_info:
-                        break
+                # -----------------------------------------------------------------
+                # DURCHLAUF 2: FALLBACK-MATCHES (Nur wenn oben nichts exakt gepasst hat)
+                # -----------------------------------------------------------------
+                if not found_product_info:
+                    for stock_low, info in grocy_products_map.items():
+                        # 2a. SPLITTING FÜR BINDESTRICHE (z.B. "Nudeln - Farfalle")
+                        stock_parts = [p.strip() for p in re.split(r"[\-,._]+", stock_low) if len(p.strip()) > 2]
+                        if stock_parts and stock_parts[0] in ing_words:
+                            found_product_info = info
+                            break
+                            
+                        # 2b. TEILWORT-MATCH (z.B. Mealie: "Mehl" -> Grocy: "Weizenmehl")
+                        # Matcht nur, wenn das Rezept-Wort am ENDE des Grocy-Produktworts steht
+                        match_found = False
+                        for word in ing_words:
+                            if len(word) >= 4:
+                                if re.search(re.escape(word) + r'\b', stock_low):
+                                    found_product_info = info
+                                    match_found = True
+                                    break
+                        if match_found:
+                            break
+
+                # -----------------------------------------------------------------
 
                 if found_product_info:
                     match_count += 1
