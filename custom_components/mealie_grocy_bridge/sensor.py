@@ -35,7 +35,7 @@ async def async_setup_entry(
     coordinator = MealieGrocyBridgeCoordinator(hass, entry.entry_id)
     await coordinator.async_config_entry_first_refresh()
 
-    # NEU: Coordinator für die __init__.py bereitstellen
+    # Coordinator für die __init__.py bereitstellen
     hass.data[DOMAIN]["coordinator"] = coordinator
 
     async_add_entities([MealieGrocySensor(coordinator, entry.entry_id)], True)
@@ -53,7 +53,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(minutes=30),
+              update_interval=timedelta(minutes=30),
         )
 
     async def _fetch_recipe_details(self, semaphore, slug, mealie_url, headers):
@@ -182,7 +182,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         full_recipes = [r for r in full_recipes if r is not None]
 
         # =====================================================================
-        # 5. MATCHING ALGORITHMUS (ULTRA-INTELLIGENTER ABGLEICH)
+        # 5. MATCHING ALGORITHMUS
         # =====================================================================
         results = []
 
@@ -208,12 +208,34 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
             all_ingredients = recipe.get("recipeIngredient") or recipe.get("recipeIngredients") or []
             
             relevant_ingredients = []
+            basic_ingredients_details = []
+
             for ing in all_ingredients:
                 if not isinstance(ing, dict):
                     continue
-                text = (ing.get("note") or ing.get("display") or ing.get("originalText") or "").lower()
-                if text and not any(basic in text for basic in basics_to_ignore):
-                    relevant_ingredients.append(ing)
+                display_text = ing.get("display") or ing.get("note") or ing.get("originalText") or ""
+                text_low = display_text.lower()
+                
+                # Prüfen, ob die Zutat zu den Basics gehört
+                matched_basic = None
+                for basic in basics_to_ignore:
+                    if basic in text_low:
+                        matched_basic = basic
+                        break
+
+                if matched_basic:
+                    # REINIGUNGS-LOGIK FÜR BASICS:
+                    # Entfernt Einheiten (tl, el, stück, prise, g), Zahlen und Brüche (½, ¼, etc.) am Anfang
+                    cleaned_text = re.sub(r'^[\d\s½⅓¼⅕⅙⅛.]+|(?:tl|el|stck|stück|prise|g|kg|bund|zehe|zehen)\b', '', text_low, flags=re.IGNORECASE)
+                    # Sonderzeichen entfernen
+                    cleaned_text = cleaned_text.replace('-', ' ').strip()
+                    
+                    # Wenn Text übrig bleibt, nutzen wir den bereinigten Namen, andernfalls das gefundene Basic-Schlagwort
+                    final_basic_name = cleaned_text if len(cleaned_text) > 2 else matched_basic
+                    basic_ingredients_details.append(final_basic_name.strip().capitalize())
+                else:
+                    if text_low:
+                        relevant_ingredients.append(ing)
 
             if not relevant_ingredients:
                 continue
@@ -227,36 +249,43 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                 ing_original_text = ing.get("display") or ing.get("note") or ing.get("originalText") or ""
                 ing_text_low = str(ing_original_text).lower()
                 
-                # Mealie-Wörter splitten (Zahlen und Mini-Wörter ignorieren)
                 ing_words = [w for w in re.split(r"[\s,()./]+", ing_text_low) if len(w) > 2 and not w.isdigit()]
 
                 found_product_info = None
                 
                 # -----------------------------------------------------------------
-                # DURCHLAUF 1: STRIKTE DIREKT-MATCHES (Exakter Texttreffer über Wortgrenzen)
+                # DURCHLAUF 1: STRIKTE DIREKT-MATCHES
                 # -----------------------------------------------------------------
                 for stock_low, info in grocy_products_map.items():
+                    if "yumyum" in stock_low or "nudeln" in stock_low or "ramen" in stock_low:
+                        if "wings" in ing_text_low or "schenkel" in ing_text_low or "filet" in ing_text_low or "keulen" in ing_text_low:
+                            continue
+
                     if re.search(r'\b' + re.escape(stock_low) + r'\b', ing_text_low):
                         found_product_info = info
                         break
                         
                 # -----------------------------------------------------------------
-                # DURCHLAUF 2: FALLBACK-MATCHES (Nur wenn oben nichts exakt gepasst hat)
+                # DURCHLAUF 2: FALLBACK-MATCHES
                 # -----------------------------------------------------------------
                 if not found_product_info:
                     for stock_low, info in grocy_products_map.items():
-                        # 2a. SPLITTING FÜR BINDESTRICHE (z.B. "Nudeln - Farfalle")
+                        if "yumyum" in stock_low or "nudeln" in stock_low or "ramen" in stock_low:
+                            if "wings" in ing_text_low or "schenkel" in ing_text_low or "filet" in ing_text_low or "keulen" in ing_text_low:
+                                continue
+
                         stock_parts = [p.strip() for p in re.split(r"[\-,._]+", stock_low) if len(p.strip()) > 2]
                         if stock_parts and stock_parts[0] in ing_words:
                             found_product_info = info
                             break
                             
-                        # 2b. TEILWORT-MATCH (z.B. Mealie: "Mehl" -> Grocy: "Weizenmehl")
-                        # Matcht nur, wenn das Rezept-Wort am ENDE des Grocy-Produktworts steht
                         match_found = False
                         for word in ing_words:
                             if len(word) >= 4:
                                 if re.search(re.escape(word) + r'\b', stock_low):
+                                    if ("nudeln" in stock_low or "ramen" in stock_low or "yumyum" in stock_low) and "nudeln" not in ing_words and "ramen" not in ing_words and "suppe" not in ing_words:
+                                        continue
+
                                     found_product_info = info
                                     match_found = True
                                     break
@@ -271,7 +300,8 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                     if found_product_info["expiring"]:
                         has_expiring_ingredient = True
                 else:
-                    missing_details.append(ing_original_text)
+                    # Auch fehlende Zutaten hübsch formatieren (Erster Buchstabe groß)
+                    missing_details.append(ing_original_text.strip().capitalize())
 
             if match_count > 0:
                 score = round((match_count / len(relevant_ingredients)) * 100)
@@ -290,6 +320,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                     "relevantTotal": len(relevant_ingredients),
                     "matchingIngredients": list(set(matching_details)),
                     "missingIngredients": missing_details,
+                    "basicIngredients": list(set(basic_ingredients_details)),
                     "url": f"{mealie_url}/g/home/r/{r_slug or ''}",
                     "hasExpiring": has_expiring_ingredient
                 })
