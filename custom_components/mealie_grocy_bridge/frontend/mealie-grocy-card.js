@@ -4,7 +4,7 @@
 import { LitElement, html, css } from "https://unpkg.com/lit-element@2.4.0/lit-element.js?module";
 
 // ======================================================================================
-// EDITOR-KLASSE: Verarbeitet die Events für den Sektions-Schieberegler
+// EDITOR-KLASSE: Das visuelle Formular in der Dashboard-Konfiguration
 // ======================================================================================
 class MealieGrocyCardEditor extends LitElement {
   
@@ -19,17 +19,48 @@ class MealieGrocyCardEditor extends LitElement {
     this._config = config;
   }
 
+  // Definition des Formular-Schemas für den visuellen Editor
+  _getSchema() {
+    return [
+      { name: "entity", label: "Sensor Entität", selector: { entity: { domain: "sensor" } } },
+      { 
+        name: "", 
+        type: "grid", 
+        column_min_width: "100px",
+        schema: [
+          { name: "recipe_count", label: "Anzahl Rezepte gesamt", selector: { number: { min: 1, max: 20, mode: "box" } } },
+          { name: "recipes_per_row", label: "Spalten (Klassisch)", selector: { number: { min: 1, max: 6, mode: "box" } } }
+        ]
+      }
+    ];
+  }
+
   render() {
     if (!this.hass || !this._config) return html``;
 
     return html`
-      <div style="padding: 16px; font-family: var(--paper-font-body1_-_font-family); color: var(--primary-text-color);">
-        <p style="margin-top: 0;">
-          💡 <strong>Layout-Steuerung aktiv (12-Spalten-Modus):</strong><br>
-          Nutze den Reiter <strong>Layout</strong> oben, um die Spaltenbreite im Dashboard flexibel einzustellen.
-        </p>
+      <ha-form
+        .hass=${this.hass}
+        .data=${this._config}
+        .schema=${this._getSchema()}
+        .computeLabel=${(schema) => schema.label}
+        @value-changed=${this._valueChanged}
+      ></ha-form>
+      <div style="padding: 16px; border-top: 1px solid var(--divider-color); margin-top: 16px; font-size: 0.9rem; color: var(--secondary-text-color);">
+        💡 <strong>Tipp:</strong> Im neuen "Abschnitte"-Layout steuert der Reiter <strong>Layout</strong> (oben) die echte Breite. Die "Spalten"-Einstellung hier dient als Fallback für ältere Dashboards.
       </div>
     `;
+  }
+
+  // Diese Funktion wird aufgerufen, wenn du im UI etwas änderst
+  _valueChanged(ev) {
+    const config = ev.detail.value;
+    const event = new CustomEvent("config-changed", {
+      detail: { config },
+      bubbles: true,
+      composed: true,
+    });
+    this.dispatchEvent(event);
   }
 }
 customElements.define("mealie-grocy-card-editor", MealieGrocyCardEditor);
@@ -47,6 +78,7 @@ class MealieGrocyCard extends LitElement {
     };
   }
 
+  // Verknüpfung zum Editor
   static getConfigElement() {
     return document.createElement("mealie-grocy-card-editor");
   }
@@ -68,9 +100,9 @@ class MealieGrocyCard extends LitElement {
       
       .recipe-grid {
         display: grid;
-        /* Dynamische Spaltenberechnung basierend auf der echten Breite im Dashboard.
-           Falls HA 12 Spalten meldet, teilen wir durch 3, um wieder auf 4 Rezeptkacheln zu kommen. */
+        /* Dynamische Spalten: Nutzt HA-Layout oder die manuelle Einstellung */
         grid-template-columns: repeat(var(--calculated-columns, var(--recipes-per-row, 4)), minmax(0, 1fr));
+        grid-auto-rows: 1fr;
         gap: 16px;
         padding: 4px;
         width: 100%;
@@ -80,6 +112,7 @@ class MealieGrocyCard extends LitElement {
       @media (max-width: 600px) {
         .recipe-grid {
           grid-template-columns: 1fr !important;
+          grid-auto-rows: auto !important;
         }
       }
 
@@ -91,7 +124,8 @@ class MealieGrocyCard extends LitElement {
         display: grid;
         grid-template-rows: auto 1fr auto;
         gap: 12px;
-        height: 380px;
+        min-height: 380px;
+        height: 100%;
         box-sizing: border-box;
         width: 100%;
       }
@@ -124,16 +158,7 @@ class MealieGrocyCard extends LitElement {
         display: flex;
         flex-direction: column;
         gap: 8px;
-        overflow-y: auto;
-        padding-right: 4px;
-      }
-
-      .content-zone::-webkit-scrollbar {
-        width: 4px;
-      }
-      .content-zone::-webkit-scrollbar-thumb {
-        background: rgba(var(--rgb-primary-text-color), 0.1);
-        border-radius: 4px;
+        overflow: visible;
       }
 
       .ingredient-section {
@@ -194,11 +219,11 @@ class MealieGrocyCard extends LitElement {
       return html`<ha-card style="padding: 16px;">Warte auf Daten vom Mealie-Grocy-Sensor...</ha-card>`;
     }
 
-    const recipeCount = this.config.recipe_count || 4;
-    const recipes = stateObj.attributes.recipes.slice(0, recipeCount);
+    // NUTZT JETZT DIE EINSTELLUNG AUS DEM VISUELLEN EDITOR (Standard: 4)
+    const recipeLimit = this.config.recipe_count || 4;
+    const recipes = stateObj.attributes.recipes.slice(0, recipeLimit);
     
-    // Wir bestimmen die Spaltenanzahl im Rezept-Grid dynamisch anhand der gezogenen Layout-Breite.
-    // Wenn HA uns im neuen System z.B. 12 Sektions-Spalten gibt, wollen wir 4 Rezepte nebeneinander (12 / 3 = 4).
+    // Spalten-Berechnung
     const haColumns = this.config.layout?.grid_columns || 12;
     let calculatedColumns = this.config.recipes_per_row || 4;
     
@@ -272,13 +297,12 @@ class MealieGrocyCard extends LitElement {
     `;
   }
 
-  // Hier erweitern wir das Maximum auf die vollen 12 Einheiten des modernen Dashboards!
   getLayoutOptions() {
     return {
       grid_rows: "auto",
       grid_columns: this.config.layout?.grid_columns || 12,      
-      grid_min_columns: 3,   // Entspricht 1 Kachel-Breite im neuen System
-      grid_max_columns: 12,  // Die volle Breite des Abschnitts (alle 12 Einheiten)
+      grid_min_columns: 3,   
+      grid_max_columns: 12,  
     };
   }
 
@@ -291,19 +315,11 @@ class MealieGrocyCard extends LitElement {
     };
   }
 
-  static getGridOptions(config) {
-    return {
-      columns: config.layout?.grid_columns || 12,
-      rows: "auto",
-      min_columns: 3,
-      max_columns: 12,
-    };
-  }
-
   static getStubConfig() {
     return {
       entity: "sensor.mealie_grocy_kochvorschlage",
-      recipe_count: 4
+      recipe_count: 4,
+      recipes_per_row: 4
     };
   }
 
