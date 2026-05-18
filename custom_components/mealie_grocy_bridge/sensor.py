@@ -53,7 +53,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=DOMAIN,
-              update_interval=timedelta(minutes=30),
+            update_interval=timedelta(minutes=30),
         )
 
     async def _fetch_recipe_details(self, semaphore, slug, mealie_url, headers):
@@ -225,12 +225,9 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
 
                 if matched_basic:
                     # REINIGUNGS-LOGIK FÜR BASICS:
-                    # Entfernt Einheiten (tl, el, stück, prise, g), Zahlen und Brüche (½, ¼, etc.) am Anfang
                     cleaned_text = re.sub(r'^[\d\s½⅓¼⅕⅙⅛.]+|(?:tl|el|stck|stück|prise|g|kg|bund|zehe|zehen)\b', '', text_low, flags=re.IGNORECASE)
-                    # Sonderzeichen entfernen
                     cleaned_text = cleaned_text.replace('-', ' ').strip()
                     
-                    # Wenn Text übrig bleibt, nutzen wir den bereinigten Namen, andernfalls das gefundene Basic-Schlagwort
                     final_basic_name = cleaned_text if len(cleaned_text) > 2 else matched_basic
                     basic_ingredients_details.append(final_basic_name.strip().capitalize())
                 else:
@@ -300,8 +297,11 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                     if found_product_info["expiring"]:
                         has_expiring_ingredient = True
                 else:
-                    # Auch fehlende Zutaten hübsch formatieren (Erster Buchstabe groß)
-                    missing_details.append(ing_original_text.strip().capitalize())
+                    # ANPASSUNG: Erstes echtes Wort/Zutat sauber formatieren, ohne den Rest zu verkleinern
+                    cleaned_ing = str(ing_original_text).strip()
+                    if cleaned_ing:
+                        formatted_ing = cleaned_ing[0].upper() + cleaned_ing[1:]
+                        missing_details.append(formatted_ing)
 
             if match_count > 0:
                 score = round((match_count / len(relevant_ingredients)) * 100)
