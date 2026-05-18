@@ -8,8 +8,9 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, CoordinatorEntity
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, CoordinatorEntity, UpdateFailed
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
@@ -36,7 +37,8 @@ async def async_setup_entry(
     await coordinator.async_config_entry_first_refresh()
 
     # Coordinator für die __init__.py bereitstellen
-    hass.data[DOMAIN]["coordinator"] = coordinator
+    # hass.data[DOMAIN]["coordinator"] = coordinator Update 18.05.2026
+    hass.data[DOMAIN][entry.entry_id]["coordinator"] = coordinator
 
     async_add_entities([MealieGrocySensor(coordinator, entry.entry_id)], True)
 
@@ -57,11 +59,14 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         )
 
     async def _fetch_recipe_details(self, semaphore, slug, mealie_url, headers):
-        """Fetch full details for a single recipe with concurrency limit."""
+        """Fetch full details for a single recipe with concurrency limit and pacing."""
         async with semaphore:
             try:
                 async with self.session.get(f"{mealie_url}/api/recipes/{slug}", headers=headers, timeout=10) as res:
                     if res.status == 200:
+                        # Ein ganz kurzes Delay nach dem erfolgreichen Request,
+                        # um die API und die DB-Verbindungen zu entlasten
+                        await asyncio.sleep(0.05)
                         return await res.json()
             except Exception as err:
                 _LOGGER.error("Fehler beim Abrufen des Rezept-Details für %s: %s", slug, err)
@@ -92,7 +97,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         # =====================================================================
         # 2. MEALIE SPEISEPLAN ABRUFEN
         # =====================================================================
-        today = datetime.now().date()
+        today = dt_util.now().date()
         end_date = today + timedelta(days=8)
         mealplan_url = f"{mealie_url}/api/households/mealplans?startTime={today}&endTime={end_date}"
         
@@ -135,10 +140,10 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         try:
             async with self.session.get(f"{grocy_url}/api/stock", headers=grocy_headers, timeout=15) as res:
                 if res.status != 200:
-                    raise Exception(f"Grocy API Fehler: {res.status}")
+                    raise UpdateFailed(f"Grocy API Fehler: {res.status}")
                 grocy_data = await res.json()
         except Exception as err:
-            raise Exception(f"Verbindung zu Grocy fehlgeschlagen: {err}")
+            raise UpdateFailed(f"Verbindung zu Grocy fehlgeschlagen: {err}")
 
         grocy_products_map = {}
         in_one_month = today + timedelta(days=30)
@@ -158,28 +163,36 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                                     is_expiring_soon = True
                         except ValueError:
                             pass
-                    grocy_products_map[orig_name.lower()] = {"orig_name": orig_name, "expiring": is_expiring_soon}
+                    grocy_products_map[orig_name.lower()] = {
+                        "orig_name": orig_name,
+                        "expiring": is_expiring_soon,
+                        "regex": re.compile(r'\b' + re.escape(orig_name.lower()) + r'\b')
+                    }
 
-        # =====================================================================
+# =====================================================================
         # 4. MEALIE REZEPTE ABRUFEN
         # =====================================================================
         try:
             async with self.session.get(f"{mealie_url}/api/recipes?perPage=-1", headers=mealie_headers, timeout=15) as res:
                 if res.status != 200:
-                    raise Exception(f"Mealie API Fehler: {res.status}")
+                    raise UpdateFailed(f"Mealie API Fehler: {res.status}")
                 mealie_data = await res.json()
         except Exception as err:
-            raise Exception(f"Verbindung zu Mealie fehlgeschlagen: {err}")
+            raise UpdateFailed(f"Verbindung zu Mealie fehlgeschlagen: {err}")
 
         recipes_list = mealie_data.get("items", [])
         
-        semaphore = asyncio.Semaphore(10)
+        # Auf 5 reduzieren – das schont Ressourcen und reicht bei 30 Min Update-Intervall locker
+        semaphore = asyncio.Semaphore(5)
         tasks = [
             self._fetch_recipe_details(semaphore, r.get("slug"), mealie_url, mealie_headers)
             for r in recipes_list if r.get("slug")
         ]
-        full_recipes = await asyncio.gather(*tasks)
-        full_recipes = [r for r in full_recipes if r is not None]
+        full_recipes = await asyncio.gather(*tasks, return_exceptions=True)
+        full_recipes = [
+            r for r in full_recipes
+            if r is not None and not isinstance(r, Exception)
+    ]
 
         # =====================================================================
         # 5. MATCHING ALGORITHMUS
@@ -225,7 +238,12 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
 
                 if matched_basic:
                     # REINIGUNGS-LOGIK FÜR BASICS:
-                    cleaned_text = re.sub(r'^[\d\s½⅓¼⅕⅙⅛.]+|(?:tl|el|stck|stück|prise|g|kg|bund|zehe|zehen)\b', '', text_low, flags=re.IGNORECASE)
+                    cleaned_text = re.sub(
+                        r'^\s*[\d½⅓¼⅕⅙⅛.,\s]+\s*(tl|el|g|kg|ml|l|bund|stück|stck|zehe|zehen)?\s*',
+                        '',
+                        text_low,
+                        flags=re.IGNORECASE
+                    )
                     cleaned_text = cleaned_text.replace('-', ' ').strip()
                     
                     final_basic_name = cleaned_text if len(cleaned_text) > 2 else matched_basic
@@ -246,46 +264,72 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                 ing_original_text = ing.get("display") or ing.get("note") or ing.get("originalText") or ""
                 ing_text_low = str(ing_original_text).lower()
                 
+                # Extrahiere Wörter aus der Rezept-Zutat
                 ing_words = [w for w in re.split(r"[\s,()./]+", ing_text_low) if len(w) > 2 and not w.isdigit()]
 
                 found_product_info = None
                 
                 # -----------------------------------------------------------------
-                # DURCHLAUF 1: STRIKTE DIREKT-MATCHES
+                # DURCHLAUF 1: STRIKTE DIREKT-MATCHES (Wort-Grenzen)
                 # -----------------------------------------------------------------
                 for stock_low, info in grocy_products_map.items():
-                    if "yumyum" in stock_low or "nudeln" in stock_low or "ramen" in stock_low:
-                        if "wings" in ing_text_low or "schenkel" in ing_text_low or "filet" in ing_text_low or "keulen" in ing_text_low:
+                    # Harte Ausschlüsse für Suppen/Nudeln/Reis vs. Fleisch
+                    if any(nw in stock_low for nw in ["yumyum", "nudeln", "ramen", "reis"]):
+                        if any(fw in ing_text_low for fw in ["wings", "schenkel", "filet", "keulen"]):
                             continue
+                        # Verhindert Fehlmatches im ersten Durchlauf auf allgemeine Zutaten
+                        if any(kw in stock_low for kw in ["nouilles", "spring", "asia", "happiness"]):
+                            if not any(kw in ing_text_low for kw in ["nouilles", "spring", "asia", "happiness"]):
+                                continue
 
-                    if re.search(r'\b' + re.escape(stock_low) + r'\b', ing_text_low):
+                    if info["regex"].search(ing_text_low):
                         found_product_info = info
                         break
                         
                 # -----------------------------------------------------------------
-                # DURCHLAUF 2: FALLBACK-MATCHES
+                # DURCHLAUF 2: INTELLIGENTES SELEKTIVES MATCHING
                 # -----------------------------------------------------------------
                 if not found_product_info:
                     for stock_low, info in grocy_products_map.items():
-                        if "yumyum" in stock_low or "nudeln" in stock_low or "ramen" in stock_low:
-                            if "wings" in ing_text_low or "schenkel" in ing_text_low or "filet" in ing_text_low or "keulen" in ing_text_low:
+                        if any(nw in stock_low for nw in ["yumyum", "nudeln", "ramen", "reis"]):
+                            if any(fw in ing_text_low for fw in ["wings", "schenkel", "filet", "keulen"]):
                                 continue
 
-                        stock_parts = [p.strip() for p in re.split(r"[\-,._]+", stock_low) if len(p.strip()) > 2]
-                        if stock_parts and stock_parts[0] in ing_words:
-                            found_product_info = info
-                            break
+                        # Zerlege den Grocy-Namen in einzelne Wörter
+                        stock_words = [p.strip() for p in re.split(r"[\s\-,._()]+", stock_low) if len(p.strip()) > 2]
+                        if not stock_words:
+                            continue
+
+                        # SPEZIALFALL CHICKEN: Verhindert, dass "Chicken Wings" auf "Chicken Nuggets" matcht
+                        if "chicken" in ing_words and "chicken" in stock_words:
+                            if "wings" in ing_words and "wings" not in stock_words:
+                                continue
+                            if "nuggets" in ing_words and "nuggets" not in stock_words:
+                                continue
+
+                        # SPEZIALFALL NUDELN / RAMEN / YUMYUM / REIS
+                        if any(nw in stock_low for nw in ["nudeln", "ramen", "yumyum", "reis"]):
+                            if not any(nw in ing_text_low for nw in ["nudeln", "ramen", "suppe", "yumyum", "reis"]):
+                                continue
                             
+                            # HARTER AUSSCHLUSS FÜR HOCHSPEZIFISCHE ASIA-PRODUKTE
+                            if any(kw in stock_low for kw in ["nouilles", "spring", "asia", "happiness"]):
+                                if not any(kw in ing_text_low for kw in ["nouilles", "spring", "asia", "happiness"]):
+                                    continue
+
+                            if "wan-tan" in stock_low and "wan-tan" not in ing_text_low:
+                                continue
+
+                        # Allgemeiner Abgleich mit Plural-Toleranz
                         match_found = False
                         for word in ing_words:
-                            if len(word) >= 4:
-                                if re.search(re.escape(word) + r'\b', stock_low):
-                                    if ("nudeln" in stock_low or "ramen" in stock_low or "yumyum" in stock_low) and "nudeln" not in ing_words and "ramen" not in ing_words and "suppe" not in ing_words:
-                                        continue
-
+                            for s_word in stock_words:
+                                if word == s_word or word + "n" == s_word or word + "s" == s_word or word + "en" == s_word or s_word + "n" == word or s_word + "s" == word:
                                     found_product_info = info
                                     match_found = True
                                     break
+                            if match_found:
+                                break
                         if match_found:
                             break
 
@@ -297,7 +341,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                     if found_product_info["expiring"]:
                         has_expiring_ingredient = True
                 else:
-                    # ANPASSUNG: Erstes echtes Wort/Zutat sauber formatieren, ohne den Rest zu verkleinern
+                    # Erstes echtes Wort/Zutat sauber formatieren
                     cleaned_ing = str(ing_original_text).strip()
                     if cleaned_ing:
                         formatted_ing = cleaned_ing[0].upper() + cleaned_ing[1:]
@@ -341,11 +385,10 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> int:
-        return len(self.coordinator.data) if self.coordinator.data else 0
+        return len(self.coordinator.data or [])
 
     @property
     def extra_state_attributes(self) -> dict:
         return {
             "recipes": self.coordinator.data if self.coordinator.data else [],
-            "markdown_suggestions": ""
         }
