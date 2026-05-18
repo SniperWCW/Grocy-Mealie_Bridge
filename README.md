@@ -52,340 +52,45 @@ Der Sensor läuft über einen `DataUpdateCoordinator` und fragt standardmäßig 
 ---
 
 ## 📺 Frontend-Beispiele (Lovelace Dashboard)
+## 🎨 Dashboard-Integration (Lovelace Card)
 
-Für die Darstellung auf dem Dashboard steht ein Design zur Verfügung, welches die `custom:expander-card` nutzt, um im Dashboard massiv Platz zu sparen und die Vorschläge kompakt anzuordnen.
-<img width="691" height="98" alt="image" src="https://github.com/user-attachments/assets/9af9c382-617a-4ca1-80b9-0863f9e786c2" />
-<img width="652" height="558" alt="image" src="https://github.com/user-attachments/assets/76f2eba0-c5c6-43cb-bdd8-0f1134849e74" />
+Die Integration bringt eine maßgeschneiderte Lovelace-Karte (`MealieGrocyCard`) direkt mit. Diese passt sich automatisch an dein Home Assistant Theme an, ist voll responsive für Smartphones optimiert und bietet native Buttons, um fehlende Zutaten auf die Einkaufsliste zu setzen oder das Rezept direkt in den Mealie-Speiseplan einzutragen.
 
+### 1. Karte als Ressource registrieren
+
+Da die Karte automatisch im lokalen Home Assistant Speicher abgelegt wird, musst du sie lediglich einmalig als Lovelace-Ressource registrieren:
+
+1. Gehe in Home Assistant auf **Einstellungen** ➔ **Dashboards**.
+2. Klicke oben rechts auf die drei Punkte und wähle **Ressourcen**.
+3. Klicke unten rechts auf **Ressource hinzufügen**.
+4. Trage folgende Werte ein:
+   * **URL:** `/local/community/mealie_grocy_bridge/mealie-grocy-card.js?v=1.1` *(Tipp: Erhöhe die Versionsnummer am Ende nach einem Update, um den Browser-Cache zu zwingen, die neue Karte zu laden).*
+   * **Ressourcentyp:** `JavaScript-Modul`
+
+---
+
+### 2. Konfiguration im Dashboard
+
+Füge deinem Dashboard eine neue Karte hinzu und wechsle in den **Code-Editor (YAML)**. Die Karte bietet dir volle Flexibilität bei der Anzahl der Spalten und der Menge der angezeigten Rezepte.
+
+#### Konfigurations-Parameter:
+
+| Parameter | Typ | Standard | Beschreibung |
+| :--- | :--- | :--- | :--- |
+| `type` | String | **Pflichtfeld** | Muss exakt `custom:mealie-grocy-card` lauten. |
+| `entity` | String | `sensor.mealie_grocy_kochvorschlage` | Die Sensor-Entität deiner Bridge. |
+| `recipes_per_row` | Integer | `1` | Maximale Anzahl an Rezeptkacheln, die **nebeneinander** in einer Reihe angezeigt werden. |
+| `recipe_count` | Integer | `4` | **Gesamtanzahl** der Rezepte, die maximal aus dem Sensor geladen und auf der Karte dargestellt werden. |
+
+---
+
+### 3. YAML-Beispiele
+
+#### Standard-Ansicht (Raster-Layout)
+Zeigt die Top 4 Rezepte sauber aufgeteilt in Zweierreihen an:
 ```yaml
-type: custom:expander-card
-cards:
-  - type: grid
-    columns: 2
-    square: false
-    grid_options:
-      columns: 24
-      rows: auto
-    cards:
-      - type: vertical-stack
-        card_mod:
-          style: |
-            ha-card {
-              background: var(--card-background-color, var(--secondary-background-color));
-              border-radius: var(--bubble-border-radius, 20px);
-              border: 1px solid rgba(var(--rgb-primary-text-color), 0.05);
-              padding: 12px;
-              height: 100%;
-              box-sizing: border-box;
-              display: flex;
-              flex-direction: column;
-              justify-content: space-between;
-            }
-        cards:
-          - type: markdown
-            card_mod:
-              style: |
-                ha-card {
-                  background: transparent !important;
-                  border: none !important;
-                  padding: 0 !important;
-                }
-                h3 {
-                  margin-top: 0 !important;
-                  margin-bottom: 8px !important;
-                  font-size: 1.1rem !important;
-                  line-height: 1.3 !important;
-                }
-                ul {
-                  margin: 4px 0 !important;
-                  padding-left: 20px !important;
-                }
-            content: >-
-              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage',
-              'recipes') %} {% if recipes and recipes|length > 0 %}
-                ### 🍳 {{ recipes[0].recipeName | upper }} {% if recipes[0].hasExpiring | default(false) %}🔥{% endif %}
-                📊 Score: **{{ recipes[0].matchScore }}%**
-                
-                ✅ **Vorhanden:**
-                * {{ recipes[0].matchingIngredients | map('capitalize') | join(', ') if recipes[0].matchingIngredients else 'Keine' }}
-                
-                🧂 **Basics (Ignoriert):**
-                * {{ recipes[0].basicIngredients | map('capitalize') | join(', ') if recipes[0].basicIngredients else 'Keine' }}
-                
-                🛒 **Einkaufen:**
-                * *{{ recipes[0].missingIngredients | join(', ') if recipes[0].missingIngredients else 'Nichts' }}*
-                
-                <br>
-                🔗 <a href="{{ recipes[0].url }}" target="_blank" style="color: var(--primary-color); text-decoration: none;">👉 REZEPT ÖFFNEN</a>
-              {% else %}
-                ### 🍳 Kein Rezept gefunden
-              {% endif %}
-          - type: custom:mushroom-chips-card
-            alignment: center
-            card_mod:
-              style: |
-                ha-card {
-                  background: transparent !important;
-                  border: none !important;
-                  padding-top: 8px !important;
-                }
-            chips:
-              - type: action
-                icon: mdi:cart-plus
-                icon_color: primary
-                tap_action:
-                  action: perform-action
-                  perform_action: mealie_grocy_bridge.add_missing_ingredients
-                  data:
-                    recipe_index: 0
-              - type: action
-                icon: mdi:calendar-plus
-                icon_color: info
-                tap_action:
-                  action: perform-action
-                  perform_action: mealie_grocy_bridge.set_to_next_free_day
-                  data:
-                    recipe_index: 0
-      - type: vertical-stack
-        card_mod:
-          style: |
-            ha-card {
-              background: var(--card-background-color, var(--secondary-background-color));
-              border-radius: var(--bubble-border-radius, 20px);
-              border: 1px solid rgba(var(--rgb-primary-text-color), 0.05);
-              padding: 12px;
-              height: 100%;
-              box-sizing: border-box;
-              display: flex;
-              flex-direction: column;
-              justify-content: space-between;
-            }
-        cards:
-          - type: markdown
-            card_mod:
-              style: |
-                ha-card {
-                  background: transparent !important;
-                  border: none !important;
-                  padding: 0 !important;
-                }
-                h3 {
-                  margin-top: 0 !important;
-                  margin-bottom: 8px !important;
-                  font-size: 1.1rem !important;
-                  line-height: 1.3 !important;
-                }
-                ul {
-                  margin: 4px 0 !important;
-                  padding-left: 20px !important;
-                }
-            content: >-
-              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage',
-              'recipes') %} {% if recipes and recipes|length > 1 %}
-                ### 🍳 {{ recipes[1].recipeName | upper }} {% if recipes[1].hasExpiring | default(false) %}🔥{% endif %}
-                📊 Score: **{{ recipes[1].matchScore }}%**
-                
-                ✅ **Vorhanden:**
-                * {{ recipes[1].matchingIngredients | map('capitalize') | join(', ') if recipes[1].matchingIngredients else 'Keine' }}
-                
-                🧂 **Basics (Ignoriert):**
-                * {{ recipes[1].basicIngredients | map('capitalize') | join(', ') if recipes[1].basicIngredients else 'Keine' }}
-                
-                🛒 **Einkaufen:**
-                * *{{ recipes[1].missingIngredients | join(', ') if recipes[1].missingIngredients else 'Nichts' }}*
-                
-                <br>
-                🔗 <a href="{{ recipes[1].url }}" target="_blank" style="color: var(--primary-color); text-decoration: none;">👉 REZEPT ÖFFNEN</a>
-              {% else %}
-                ### 🍳 Kein Rezept gefunden
-              {% endif %}
-          - type: custom:mushroom-chips-card
-            alignment: center
-            card_mod:
-              style: |
-                ha-card {
-                  background: transparent !important;
-                  border: none !important;
-                  padding-top: 8px !important;
-                }
-            chips:
-              - type: action
-                icon: mdi:cart-plus
-                icon_color: primary
-                tap_action:
-                  action: perform-action
-                  perform_action: mealie_grocy_bridge.add_missing_ingredients
-                  data:
-                    recipe_index: 1
-              - type: action
-                icon: mdi:calendar-plus
-                icon_color: info
-                tap_action:
-                  action: perform-action
-                  perform_action: mealie_grocy_bridge.set_to_next_free_day
-                  data:
-                    recipe_index: 1
-      - type: vertical-stack
-        card_mod:
-          style: |
-            ha-card {
-              background: var(--card-background-color, var(--secondary-background-color));
-              border-radius: var(--bubble-border-radius, 20px);
-              border: 1px solid rgba(var(--rgb-primary-text-color), 0.05);
-              padding: 12px;
-              height: 100%;
-              box-sizing: border-box;
-              display: flex;
-              flex-direction: column;
-              justify-content: space-between;
-            }
-        cards:
-          - type: markdown
-            card_mod:
-              style: |
-                ha-card {
-                  background: transparent !important;
-                  border: none !important;
-                  padding: 0 !important;
-                }
-                h3 {
-                  margin-top: 0 !important;
-                  margin-bottom: 8px !important;
-                  font-size: 1.1rem !important;
-                  line-height: 1.3 !important;
-                }
-                ul {
-                  margin: 4px 0 !important;
-                  padding-left: 20px !important;
-                }
-            content: >-
-              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage',
-              'recipes') %} {% if recipes and recipes|length > 2 %}
-                ### 🍳 {{ recipes[2].recipeName | upper }} {% if recipes[2].hasExpiring | default(false) %}🔥{% endif %}
-                📊 Score: **{{ recipes[2].matchScore }}%**
-                
-                ✅ **Vorhanden:**
-                * {{ recipes[2].matchingIngredients | map('capitalize') | join(', ') if recipes[2].matchingIngredients else 'Keine' }}
-                
-                🧂 **Basics (Ignoriert):**
-                * {{ recipes[2].basicIngredients | map('capitalize') | join(', ') if recipes[2].basicIngredients else 'Keine' }}
-                
-                🛒 **Einkaufen:**
-                * *{{ recipes[2].missingIngredients | join(', ') if recipes[2].missingIngredients else 'Nichts' }}*
-                
-                <br>
-                🔗 <a href="{{ recipes[2].url }}" target="_blank" style="color: var(--primary-color); text-decoration: none;">👉 REZEPT ÖFFNEN</a>
-              {% else %}
-                ### 🍳 Kein Rezept gefunden
-              {% endif %}
-          - type: custom:mushroom-chips-card
-            alignment: center
-            card_mod:
-              style: |
-                ha-card {
-                  background: transparent !important;
-                  border: none !important;
-                  padding-top: 8px !important;
-                }
-            chips:
-              - type: action
-                icon: mdi:cart-plus
-                icon_color: primary
-                tap_action:
-                  action: perform-action
-                  perform_action: mealie_grocy_bridge.add_missing_ingredients
-                  data:
-                    recipe_index: 2
-              - type: action
-                icon: mdi:calendar-plus
-                icon_color: info
-                tap_action:
-                  action: perform-action
-                  perform_action: mealie_grocy_bridge.set_to_next_free_day
-                  data:
-                    recipe_index: 2
-      - type: vertical-stack
-        card_mod:
-          style: |
-            ha-card {
-              background: var(--card-background-color, var(--secondary-background-color));
-              border-radius: var(--bubble-border-radius, 20px);
-              border: 1px solid rgba(var(--rgb-primary-text-color), 0.05);
-              padding: 12px;
-              height: 100%;
-              box-sizing: border-box;
-              display: flex;
-              flex-direction: column;
-              justify-content: space-between;
-            }
-        cards:
-          - type: markdown
-            card_mod:
-              style: |
-                ha-card {
-                  background: transparent !important;
-                  border: none !important;
-                  padding: 0 !important;
-                }
-                h3 {
-                  margin-top: 0 !important;
-                  margin-bottom: 8px !important;
-                  font-size: 1.1rem !important;
-                  line-height: 1.3 !important;
-                }
-                ul {
-                  margin: 4px 0 !important;
-                  padding-left: 20px !important;
-                }
-            content: >-
-              {% set recipes = state_attr('sensor.mealie_grocy_kochvorschlage',
-              'recipes') %} {% if recipes and recipes|length > 3 %}
-                ### 🍳 {{ recipes[3].recipeName | upper }} {% if recipes[3].hasExpiring | default(false) %}🔥{% endif %}
-                📊 Score: **{{ recipes[3].matchScore }}%**
-                
-                ✅ **Vorhanden:**
-                * {{ recipes[3].matchingIngredients | map('capitalize') | join(', ') if recipes[3].matchingIngredients else 'Keine' }}
-                
-                🧂 **Basics (Ignoriert):**
-                * {{ recipes[3].basicIngredients | map('capitalize') | join(', ') if recipes[3].basicIngredients else 'Keine' }}
-                
-                🛒 **Einkaufen:**
-                * *{{ recipes[3].missingIngredients | join(', ') if recipes[3].missingIngredients else 'Nichts' }}*
-                
-                <br>
-                🔗 <a href="{{ recipes[3].url }}" target="_blank" style="color: var(--primary-color); text-decoration: none;">👉 REZEPT ÖFFNEN</a>
-              {% else %}
-                ### 🍳 Kein Rezept gefunden
-              {% endif %}
-          - type: custom:mushroom-chips-card
-            alignment: center
-            card_mod:
-              style: |
-                ha-card {
-                  background: transparent !important;
-                  border: none !important;
-                  padding-top: 8px !important;
-                }
-            chips:
-              - type: action
-                icon: mdi:cart-plus
-                icon_color: primary
-                tap_action:
-                  action: perform-action
-                  perform_action: mealie_grocy_bridge.add_missing_ingredients
-                  data:
-                    recipe_index: 3
-              - type: action
-                icon: mdi:calendar-plus
-                icon_color: info
-                tap_action:
-                  action: perform-action
-                  perform_action: mealie_grocy_bridge.set_to_next_free_day
-                  data:
-                    recipe_index: 3
-title: Rezeptvorschläge
-icon: mdi:chef-hat
-grid_options:
-  columns: 24
-  rows: auto
-icon-rotate-degree: "90"
+type: custom:mealie-grocy-card
+entity: sensor.mealie_grocy_kochvorschlage
+recipes_per_row: 2
+recipe_count: 4
+
