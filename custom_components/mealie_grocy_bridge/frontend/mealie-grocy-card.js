@@ -19,7 +19,6 @@ class MealieGrocyCardEditor extends LitElement {
     this._config = config;
   }
 
-  // Definition des Formular-Schemas für den visuellen Editor
   _getSchema() {
     return [
       { name: "entity", label: "Sensor Entität", selector: { entity: { domain: "sensor" } } },
@@ -29,7 +28,7 @@ class MealieGrocyCardEditor extends LitElement {
         column_min_width: "100px",
         schema: [
           { name: "recipe_count", label: "Anzahl Rezepte gesamt", selector: { number: { min: 1, max: 20, mode: "box" } } },
-          { name: "recipes_per_row", label: "Spalten (Klassisch)", selector: { number: { min: 1, max: 6, mode: "box" } } }
+          { name: "recipes_per_row", label: "Spalten (Erzwingen)", selector: { number: { min: 1, max: 6, mode: "box" } } }
         ]
       }
     ];
@@ -47,14 +46,23 @@ class MealieGrocyCardEditor extends LitElement {
         @value-changed=${this._valueChanged}
       ></ha-form>
       <div style="padding: 16px; border-top: 1px solid var(--divider-color); margin-top: 16px; font-size: 0.9rem; color: var(--secondary-text-color);">
-        💡 <strong>Tipp:</strong> Im neuen "Abschnitte"-Layout steuert der Reiter <strong>Layout</strong> (oben) die echte Breite. Die "Spalten"-Einstellung hier dient als Fallback für ältere Dashboards.
+        💡 <strong>Hinweis zur Spaltenwahl:</strong><br>
+        Wenn du hier eine Zahl bei <strong>Spalten (Erzwingen)</strong> einträgst, wird das Raster starr darauf fixiert. Lässt du das Feld leer (oder löschst die Zahl), kannst du die Breite wieder flexibel über den Reiter <strong>Layout</strong> oben mit dem Schieberegler steuern.
       </div>
     `;
   }
 
-  // Diese Funktion wird aufgerufen, wenn du im UI etwas änderst
   _valueChanged(ev) {
     const config = ev.detail.value;
+    
+    // Sicherstellen, dass leere Nummernfelder korrekt aus der Config entfernt werden
+    if (config.recipes_per_row === "") {
+      delete config.recipes_per_row;
+    }
+    if (config.recipe_count === "") {
+      delete config.recipe_count;
+    }
+
     const event = new CustomEvent("config-changed", {
       detail: { config },
       bubbles: true,
@@ -78,7 +86,6 @@ class MealieGrocyCard extends LitElement {
     };
   }
 
-  // Verknüpfung zum Editor
   static getConfigElement() {
     return document.createElement("mealie-grocy-card-editor");
   }
@@ -100,8 +107,8 @@ class MealieGrocyCard extends LitElement {
       
       .recipe-grid {
         display: grid;
-        /* Dynamische Spalten: Nutzt HA-Layout oder die manuelle Einstellung */
-        grid-template-columns: repeat(var(--calculated-columns, var(--recipes-per-row, 4)), minmax(0, 1fr));
+        /* Nutzt die berechnete Spaltenanzahl */
+        grid-template-columns: repeat(var(--calculated-columns, 4), minmax(0, 1fr));
         grid-auto-rows: 1fr;
         gap: 16px;
         padding: 4px;
@@ -219,18 +226,20 @@ class MealieGrocyCard extends LitElement {
       return html`<ha-card style="padding: 16px;">Warte auf Daten vom Mealie-Grocy-Sensor...</ha-card>`;
     }
 
-    // NUTZT JETZT DIE EINSTELLUNG AUS DEM VISUELLEN EDITOR (Standard: 4)
     const recipeLimit = this.config.recipe_count || 4;
     const recipes = stateObj.attributes.recipes.slice(0, recipeLimit);
     
-    // Spalten-Berechnung
-    const haColumns = this.config.layout?.grid_columns || 12;
-    let calculatedColumns = this.config.recipes_per_row || 4;
-    
-    if (haColumns > 4) {
-      calculatedColumns = Math.max(1, Math.round(haColumns / 3));
-    } else {
-      calculatedColumns = haColumns;
+    // NEUE LOGIK: Wenn manuell Spalten gesetzt wurden, nutzen wir diese AUF JEDEN FALL.
+    let calculatedColumns = this.config.recipes_per_row;
+
+    // Wenn im Formular nichts eingetragen ist, greift die automatische Schieberegler-Berechnung
+    if (!calculatedColumns) {
+      const haColumns = this.config.layout?.grid_columns || 12;
+      if (haColumns > 4) {
+        calculatedColumns = Math.max(1, Math.round(haColumns / 3));
+      } else {
+        calculatedColumns = haColumns;
+      }
     }
 
     return html`
@@ -318,8 +327,7 @@ class MealieGrocyCard extends LitElement {
   static getStubConfig() {
     return {
       entity: "sensor.mealie_grocy_kochvorschlage",
-      recipe_count: 4,
-      recipes_per_row: 4
+      recipe_count: 4
     };
   }
 
