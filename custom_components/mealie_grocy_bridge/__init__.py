@@ -4,7 +4,8 @@ Diese Datei initialisiert die Integration, verarbeitet die Konfiguration aus der
 und stellt die beiden zentralen Home Assistant Dienste (Services) bereit.
 """
 import logging
-import aiohttp
+import os
+#import aiohttp
 from datetime import datetime, timedelta
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -23,6 +24,9 @@ from .const import (
 # Logger-Instanz für Fehlermeldungen und Status-Infos im Home Assistant Log
 _LOGGER = logging.getLogger(__name__)
 CONF_EXCLUDED_FOODS = "excluded_foods"
+
+URL_BASE = "/mealie_grocy_bridge_ui"
+CARD_FILENAME = "mealie-grocy-card.js"
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Wird von HA aufgerufen, wenn die Integration geladen oder gestartet wird.
@@ -44,6 +48,41 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         **config,
         "excluded_foods_list": excluded_foods_list
     }
+
+    # -----------------------------------------------------------------
+    # FRONTEND: Automatische Registrierung der Custom Card
+    # -----------------------------------------------------------------
+    try:
+        # 1. Statischen Pfad für das Frontend-Verzeichnis registrieren
+        frontend_dir = os.path.join(os.path.dirname(__file__), "frontend")
+        if os.path.isdir(frontend_dir):
+            _LOGGER.info("Registriere statischen Pfad %s für %s", URL_BASE, frontend_dir)
+            
+            hass.http.app.router.add_static(URL_BASE, frontend_dir, name="mealie_grocy_bridge_frontend")
+            
+            # 2. Lovelace-Ressourcen-Datenbank anpassen, falls das Frontend aktiv ist
+            if "frontend" in hass.data and "lovelace" in hass.data["frontend"]:
+                lovelace = hass.data["frontend"]["lovelace"]
+                if hasattr(lovelace, "resources"):
+                    resources = lovelace.resources
+                    card_url = f"{URL_BASE}/{CARD_FILENAME}"
+                    
+                    # Verhindert doppelte Einträge bei Neustarts
+                    #if not any(r.get("url") == card_url for r in resources.async_items()):
+                    items = await resources.async_items()
+                    if not any(r.get("url") == card_url for r in items):
+                        _LOGGER.info("Registriere Mealie-Grocy Custom Card im Frontend...")
+                        # await resources.async_create_item({
+                        #     "res_type": "module",
+                        #     "url": card_url
+                        await resources.async_create_item({
+                            "url": card_url,
+                            "type": "module"
+                        })
+        else:
+            _LOGGER.warning("Frontend-Verzeichnis existiert nicht: %s", frontend_dir)
+    except Exception as frontend_err:
+        _LOGGER.error("Fehler bei der Frontend-Registrierung der Custom Card: %s", frontend_err)
 
     # Registriert einen Listener, der feuert, wenn der Nutzer die Optionen in der UI speichert
     entry.async_on_unload(entry.add_update_listener(update_listener))
@@ -224,7 +263,14 @@ async def update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Wird aufgerufen, wenn die Integration gelöscht oder deaktiviert wird."""
-    unload_ok = await hass.config_entries.async_forward_entry_unload(entry, "sensor")
+    #unload_ok = await hass.config_entries.async_forward_entry_unload(entry, "sensor")
+
+    hass.services.async_remove(DOMAIN, "add_missing_ingredients")
+    hass.services.async_remove(DOMAIN, "set_to_next_free_day")
+
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor"])
+
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
+
     return unload_ok
