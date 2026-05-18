@@ -51,7 +51,6 @@ Der Sensor läuft über einen `DataUpdateCoordinator` und fragt standardmäßig 
 
 ---
 
-## 📺 Frontend-Beispiele (Lovelace Dashboard)
 ## 🎨 Dashboard-Integration (Lovelace Card)
 
 Die Integration bringt eine maßgeschneiderte Lovelace-Karte (`MealieGrocyCard`) direkt mit. Diese passt sich automatisch an dein Home Assistant Theme an, ist voll responsive für Smartphones optimiert und bietet native Buttons, um fehlende Zutaten auf die Einkaufsliste zu setzen oder das Rezept direkt in den Mealie-Speiseplan einzutragen.
@@ -64,33 +63,44 @@ Da die Karte automatisch im lokalen Home Assistant Speicher abgelegt wird, musst
 2. Klicke oben rechts auf die drei Punkte und wähle **Ressourcen**.
 3. Klicke unten rechts auf **Ressource hinzufügen**.
 4. Trage folgende Werte ein:
-   * **URL:** `/local/community/mealie_grocy_bridge/mealie-grocy-card.js?v=1.1` *(Tipp: Erhöhe die Versionsnummer am Ende nach einem Update, um den Browser-Cache zu zwingen, die neue Karte zu laden).*
+   * **URL:** `/local/community/mealie_grocy_bridge/mealie-grocy-card.js?v=1.3` *(Tipp: Erhöhe die Versionsnummer am Ende nach einem Update, um den Browser-Cache zu zwingen, die neue Karte zu laden).*
    * **Ressourcentyp:** `JavaScript-Modul`
 
 ---
 
-### 2. Konfiguration im Dashboard
+### 2. Visuelle Konfiguration & Features der Karte
 
-Füge deinem Dashboard eine neue Karte hinzu und wechsle in den **Code-Editor (YAML)**. Die Karte bietet dir volle Flexibilität bei der Anzahl der Spalten und der Menge der angezeigten Rezepte.
+Ab Version 1.3 bringt die Karte vollwertigen Support für moderne Dashboards mit und macht die manuelle YAML-Editierung überflüssig.
 
-#### Konfigurations-Parameter:
+* **Echter Visueller Editor (`ha-form`):** Beim Hinzufügen oder Bearbeiten der Karte öffnet sich ein komfortables Formular. Die Sensor-Entität, die Gesamtanzahl der gewünschten Rezepte sowie die Spalten können komfortabel per Klick und Dropdown ausgewählt werden.
+* **Nativer Support für das Abschnitte-Layout (Sections):** Die Karte ist voll kompatibel mit dem modernen 12-Spalten-Rastersystem von Home Assistant. Über den nativen Reiter **Layout** im Bearbeitungsmodus lässt sich die Karte flexibel per Schieberegler in der Breite verstellen (von 3 bis 12 Raster-Einheiten).
+* **Dynamisches Höhen-Grid (Keine Scrollbalken mehr!):** Die Karte berechnet die Höhe der Rezeptkacheln komplett dynamisch (`grid-auto-rows: 1fr`). Alle Kacheln innerhalb einer Reihe passen sich automatisch flexibel an das Rezept mit dem längsten Text an. Es entstehen keine unschönen Scrollbalken und alle Zutaten bleiben stets zu 100 % sichtbar.
+
+---
+
+### 3. Konfigurations-Parameter (Visueller Editor / YAML)
 
 | Parameter | Typ | Standard | Beschreibung |
 | :--- | :--- | :--- | :--- |
 | `type` | String | **Pflichtfeld** | Muss exakt `custom:mealie-grocy-card` lauten. |
-| `entity` | String | `sensor.mealie_grocy_kochvorschlage` | Die Sensor-Entität deiner Bridge. |
-| `recipes_per_row` | Integer | `1` | Maximale Anzahl an Rezeptkacheln, die **nebeneinander** in einer Reihe angezeigt werden. |
+| `entity` | String | `sensor.mealie_grocy_kochvorschlage` | Die Sensor-Entität deiner Bridge. Bequem im Editor wählbar. |
 | `recipe_count` | Integer | `4` | **Gesamtanzahl** der Rezepte, die maximal aus dem Sensor geladen und auf der Karte dargestellt werden. |
+| `recipes_per_row` | Integer | *Optional* | **Spalten (Erzwingen):** Wird hier eine Zahl eingetragen, bricht die Karte starr nach dieser Spaltenanzahl um. **Empfehlung:** Feld leer lassen, damit sich die Spaltenanzahl vollautomatisch nach dem Schieberegler des Sektions-Layouts richtet. |
 
 ---
 
-### 3. YAML-Beispiele
+### 4. YAML-Beispiele (Für fortgeschrittene Nutzung)
+<img width="250" height="394" alt="image" src="https://github.com/user-attachments/assets/f9fe734a-d0fc-4235-8d4d-5c3ad5f8ea0e" />
+<img width="504" height="357" alt="image" src="https://github.com/user-attachments/assets/e62415c3-bb4c-4baa-b5fe-8ac959bc89d0" />
 
-#### Standard-Ansicht (Raster-Layout)
-Zeigt die Top 4 Rezepte sauber aufgeteilt in Zweierreihen an:
+
+#### Automatischer Sektions-Modus (Empfohlen)
+Nutzt den visuellen Schieberegler im Abschnitte-Layout zur Breitensteuerung. Das Raster berechnet sich vollautomatisch (12 Einheiten Breite = 4 Spalten Rezepte, 6 Einheiten Breite = 2 Spalten Rezepte):
 ```yaml
 type: custom:mealie-grocy-card
-entity: sensor.mealie_grocy_kochvorschlage
-recipes_per_row: 2
 recipe_count: 4
-
+grid_options:
+  columns: 24
+  rows: auto
+entity: sensor.mealie_grocy_kochvorschlage
+recipes_per_row: 4
