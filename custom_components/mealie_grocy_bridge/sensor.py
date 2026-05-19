@@ -239,7 +239,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                 if matched_basic:
                     # REINIGUNGS-LOGIK FÜR BASICS:
                     cleaned_text = re.sub(
-                        r'^\s*[\d½⅓¼⅕⅙⅛.,\s]+\s*(tl|el|g|kg|ml|l|bund|stück|stck|zehe|zehen)?\s*',
+                        r'^\s*[\d½⅓¼⅕⅙⅛.,\s]+\s*(tl|el|g|kg|ml|l|Liter|bund|stück|stck|zehe|zehen)?\s*',
                         '',
                         text_low,
                         flags=re.IGNORECASE
