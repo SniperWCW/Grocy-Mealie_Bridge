@@ -186,7 +186,8 @@ class MealieGrocyCard extends LitElement {
 
       .missing {
         font-style: italic;
-        color: var(--warning-color, #d32f2f);
+        color: var(--secondary-text-color);
+        opacity: 0.85;
       }
 
       .action-zone {
@@ -264,9 +265,40 @@ class MealieGrocyCard extends LitElement {
                 <div class="ingredient-section">
                   <span class="ingredient-label">✅ Vorhanden:</span>
                   <div class="ingredient-list">
-                    ${recipe.matchingIngredients && recipe.matchingIngredients.length > 0 
-                      ? recipe.matchingIngredients.map(i => i.charAt(0).toUpperCase() + i.slice(1)).join(', ') 
-                      : 'Keine'}
+                  ${recipe.matchingIngredients && recipe.matchingIngredients.length > 0
+                    ? recipe.matchingIngredients.map(i => {
+                        
+                        const name = i.name
+                          ? i.name.charAt(0).toUpperCase() + i.name.slice(1)
+                          : 'Unbekannt';
+
+                        // ABGELAUFEN = ROT
+                        if (i.status === "expired") {
+                          return html`
+                            <span style="color: #ff5252; font-weight: bold;">
+                              ${name}
+                            </span>
+                          `;
+                        }
+
+                        // LÄUFT BALD AB = ORANGE
+                        if (i.status === "expiring") {
+                          return html`
+                            <span style="color: orange; font-weight: bold;">
+                              ${name}
+                            </span>
+                          `;
+                        }
+
+                        // NORMAL
+                        return html`${name}`;
+
+                      }).reduce((prev, curr, index) => [
+                        prev,
+                        index > 0 ? ', ' : '',
+                        curr
+                      ], []) 
+                    : 'Keine'}
                   </div>
                 </div>
                 
