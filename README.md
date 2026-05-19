@@ -22,7 +22,7 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 
 ---
 
-## ✨ Neu ab v0.4.0
+## ✨ Neu 
 
 - **Strukturierte Zutaten-Objekte im Sensor:**
   - Zutaten werden nicht mehr als einfache Strings geliefert
