@@ -151,22 +151,40 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         for item in (grocy_data or []):
             if isinstance(item, dict) and "product" in item:
                 product_name = item.get("product", {}).get("name")
+
                 if product_name:
                     orig_name = str(product_name).strip()
-                    is_expiring_soon = False
+
+                    # Standardstatus
+                    ingredient_status = "normal"
+
                     bbd_str = item.get("best_before_date")
+
                     if bbd_str:
                         try:
                             if not bbd_str.startswith("2999"):
-                                bbd_date = datetime.strptime(bbd_str, "%Y-%m-%d").date()
-                                if bbd_date <= in_one_month:
-                                    is_expiring_soon = True
+                                bbd_date = datetime.strptime(
+                                    bbd_str,
+                                    "%Y-%m-%d"
+                                ).date()
+
+                                # Bereits abgelaufen
+                                if bbd_date < today:
+                                    ingredient_status = "expired"
+
+                                # Läuft bald ab
+                                elif bbd_date <= in_one_month:
+                                    ingredient_status = "expiring"
+
                         except ValueError:
                             pass
+
                     grocy_products_map[orig_name.lower()] = {
                         "orig_name": orig_name,
-                        "expiring": is_expiring_soon,
-                        "regex": re.compile(r'\b' + re.escape(orig_name.lower()) + r'\b')
+                        "status": ingredient_status,
+                        "regex": re.compile(
+                            r'\b' + re.escape(orig_name.lower()) + r'\b'
+                        )
                     }
 
 # =====================================================================
@@ -337,8 +355,12 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
 
                 if found_product_info:
                     match_count += 1
-                    matching_details.append(found_product_info["orig_name"])
-                    if found_product_info["expiring"]:
+                    matching_details.append({
+                        "name": found_product_info["orig_name"],
+                        "status": found_product_info["status"]
+                    })
+
+                    if found_product_info["status"] in ["expired", "expiring"]:
                         has_expiring_ingredient = True
                 else:
                     # Erstes echtes Wort/Zutat sauber formatieren
@@ -362,7 +384,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                     "matchScore": score,
                     "matchCount": match_count,
                     "relevantTotal": len(relevant_ingredients),
-                    "matchingIngredients": list(set(matching_details)),
+                    "matchingIngredients": matching_details,
                     "missingIngredients": missing_details,
                     "basicIngredients": list(set(basic_ingredients_details)),
                     "url": f"{mealie_url}/g/home/r/{r_slug or ''}",
