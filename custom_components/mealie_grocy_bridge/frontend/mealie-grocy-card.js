@@ -22,6 +22,22 @@ class MealieGrocyCardEditor extends LitElement {
   _getSchema() {
     return [
       { name: "entity", label: "Sensor Entität", selector: { entity: { domain: "sensor" } } },
+
+      {
+        name: "display_mode",
+        label: "Darstellung",
+        selector: {
+          select: {
+            options: [
+              { value: "default", label: "Standard – Vollansicht " },
+              { value: "mini", label: "Mini – kompakter, weniger Höhe" },
+              { value: "compact", label: "Kompakt – sehr platzsparend, ideal für 4–6 Spalten" },
+              { value: "list", label: "Liste – extrem kompakt, eine Zeile pro Rezept" }
+            ]
+          }
+        }
+      },
+
       { 
         name: "", 
         type: "grid", 
@@ -55,20 +71,14 @@ class MealieGrocyCardEditor extends LitElement {
   _valueChanged(ev) {
     const config = ev.detail.value;
     
-    // Sicherstellen, dass leere Nummernfelder korrekt aus der Config entfernt werden
-    if (config.recipes_per_row === "") {
-      delete config.recipes_per_row;
-    }
-    if (config.recipe_count === "") {
-      delete config.recipe_count;
-    }
+    if (config.recipes_per_row === "") delete config.recipes_per_row;
+    if (config.recipe_count === "") delete config.recipe_count;
 
-    const event = new CustomEvent("config-changed", {
+    this.dispatchEvent(new CustomEvent("config-changed", {
       detail: { config },
       bubbles: true,
       composed: true,
-    });
-    this.dispatchEvent(event);
+    }));
   }
 }
 customElements.define("mealie-grocy-card-editor", MealieGrocyCardEditor);
@@ -107,22 +117,21 @@ class MealieGrocyCard extends LitElement {
       
       .recipe-grid {
         display: grid;
-        /* Nutzt die berechnete Spaltenanzahl */
         grid-template-columns: repeat(var(--calculated-columns, 4), minmax(0, 1fr));
-        grid-auto-rows: 1fr;
         gap: 16px;
         padding: 4px;
         width: 100%;
-        box-sizing: border-box;
       }
       
       @media (max-width: 600px) {
         .recipe-grid {
           grid-template-columns: 1fr !important;
-          grid-auto-rows: auto !important;
         }
       }
 
+      /* ---------------------------------------------------------
+         BASIS-KARTE (Variante 1 – default)
+      --------------------------------------------------------- */
       .recipe-card {
         background: var(--card-background-color, var(--secondary-background-color));
         border-radius: var(--bubble-border-radius, 20px);
@@ -132,9 +141,6 @@ class MealieGrocyCard extends LitElement {
         grid-template-rows: auto 1fr auto;
         gap: 12px;
         min-height: 380px;
-        height: 100%;
-        box-sizing: border-box;
-        width: 100%;
       }
 
       .title-zone h3 {
@@ -148,45 +154,30 @@ class MealieGrocyCard extends LitElement {
         overflow: hidden;
       }
 
-      .recipe-link {
-        color: var(--primary-color);
-        text-decoration: none;
-        font-size: 0.8rem;
-        font-weight: bold;
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        margin-top: 2px;
-      }
-
       .content-zone {
         font-size: 0.85rem;
-        line-height: 1.3;
         display: flex;
         flex-direction: column;
         gap: 8px;
-        overflow: visible;
-      }
-
-      .ingredient-section {
-        display: block;
       }
 
       .ingredient-label {
         font-weight: bold;
         display: block;
-        color: var(--primary-text-color);
         margin-bottom: 1px;
       }
 
-      .ingredient-list {
-        color: var(--secondary-text-color);
-        display: inline;
+      .expired {
+        color: #ff5252;
+        font-weight: bold;
+      }
+
+      .expiring {
+        color: orange;
+        font-weight: bold;
       }
 
       .missing {
-        font-style: italic;
-        color: var(--secondary-text-color);
         opacity: 0.85;
       }
 
@@ -200,19 +191,67 @@ class MealieGrocyCard extends LitElement {
 
       .btn {
         background: rgba(var(--rgb-primary-text-color), 0.03);
-        border: none;
         border-radius: 50%;
         width: 42px;
         height: 42px;
-        cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: background 0.2s;
       }
 
-      .btn:hover {
-        background: rgba(var(--rgb-primary-text-color), 0.08);
+      /* ---------------------------------------------------------
+         VARIANTE 2 – MINI
+      --------------------------------------------------------- */
+      .recipe-card.mini {
+        min-height: 240px;
+        padding: 12px;
+        gap: 8px;
+      }
+
+      .recipe-card.mini h3 {
+        font-size: 0.9rem;
+        -webkit-line-clamp: 1;
+      }
+
+      /* ---------------------------------------------------------
+         VARIANTE 3 – COMPACT
+      --------------------------------------------------------- */
+      .recipe-card.compact {
+        min-height: 180px;
+        padding: 10px;
+        gap: 6px;
+      }
+
+      .recipe-card.compact .content-zone {
+        font-size: 0.7rem;
+        gap: 2px;
+      }
+
+      .recipe-card.compact .btn {
+        width: 28px;
+        height: 28px;
+      }
+
+      /* ---------------------------------------------------------
+         VARIANTE 4 – LIST
+      --------------------------------------------------------- */
+      .recipe-card.list {
+        padding: 8px 12px;
+        min-height: auto;
+        display: flex;
+        align-items: center;
+      }
+
+      .recipe-card.list .title-zone,
+      .recipe-card.list .content-zone,
+      .recipe-card.list .action-zone {
+        display: none;
+      }
+
+      .recipe-card.list::after {
+        content: attr(data-list-text);
+        font-size: 0.85rem;
+        width: 100%;
       }
     `;
   }
@@ -229,128 +268,109 @@ class MealieGrocyCard extends LitElement {
 
     const recipeLimit = this.config.recipe_count || 4;
     const recipes = stateObj.attributes.recipes.slice(0, recipeLimit);
-    
-    // NEUE LOGIK: Wenn manuell Spalten gesetzt wurden, nutzen wir diese AUF JEDEN FALL.
-    let calculatedColumns = this.config.recipes_per_row;
 
-    // Wenn im Formular nichts eingetragen ist, greift die automatische Schieberegler-Berechnung
+    const mode = this.config.display_mode || "default";
+
+    let calculatedColumns = this.config.recipes_per_row;
     if (!calculatedColumns) {
       const haColumns = this.config.layout?.grid_columns || 12;
-      if (haColumns > 4) {
-        calculatedColumns = Math.max(1, Math.round(haColumns / 3));
-      } else {
-        calculatedColumns = haColumns;
-      }
+      calculatedColumns = haColumns > 4 ? Math.max(1, Math.round(haColumns / 3)) : haColumns;
     }
 
     return html`
       <ha-card>
         <div class="recipe-grid" style="--calculated-columns: ${calculatedColumns};">
           
-          ${recipes.map((recipe, index) => html`
-            <div class="recipe-card">
-              
-              <div class="title-zone">
-                <h3>🍳 ${recipe.recipeName} ${recipe.hasExpiring ? '🔥' : ''}</h3>
-                <div>📊 Score: <strong>${recipe.matchScore}%</strong></div>
+          ${recipes.map((recipe, index) => {
+            const listText = `🍳 ${recipe.recipeName} — ${recipe.matchScore}% — 🛒 ${recipe.missingIngredients.join(', ') || '–'}`;
+
+            return html`
+              <div class="recipe-card ${mode}" data-list-text="${listText}">
                 
-                ${recipe.url ? html`
-                  <a class="recipe-link" href="${recipe.url}" target="_blank">
-                    👉 REZEPT ÖFFNEN <ha-icon icon="mdi:open-in-new" style="--mdc-icon-size: 14px;"></ha-icon>
-                  </a>
-                ` : ''}
-              </div>
+                <div class="title-zone">
+                  <h3>🍳 ${recipe.recipeName} ${recipe.hasExpiring ? '🔥' : ''}</h3>
+                  <div>📊 Score: <strong>${recipe.matchScore}%</strong></div>
 
-              <div class="content-zone">
-                <div class="ingredient-section">
-                  <span class="ingredient-label">✅ Vorhanden:</span>
-                  <div class="ingredient-list">
-                  ${recipe.matchingIngredients && recipe.matchingIngredients.length > 0
-                    ? recipe.matchingIngredients.map(i => {
-                        
-                        const name = i.name
-                          ? i.name.charAt(0).toUpperCase() + i.name.slice(1)
-                          : 'Unbekannt';
-
-                        // ABGELAUFEN = ROT
-                        if (i.status === "expired") {
-                          return html`
-                            <span style="color: #ff5252; font-weight: bold;">
-                              ${name}
-                            </span>
-                          `;
-                        }
-
-                        // LÄUFT BALD AB = ORANGE
-                        if (i.status === "expiring") {
-                          return html`
-                            <span style="color: orange; font-weight: bold;">
-                              ${name}
-                            </span>
-                          `;
-                        }
-
-                        // NORMAL
-                        return html`${name}`;
-
-                      }).reduce((prev, curr, index) => [
-                        prev,
-                        index > 0 ? ', ' : '',
-                        curr
-                      ], []) 
-                    : 'Keine'}
-                  </div>
-                </div>
-                
-                <div class="ingredient-section">
-                  <span class="ingredient-label">🧂 Basics (Ignoriert):</span>
-                  <div class="ingredient-list">
-                    ${recipe.basicIngredients && recipe.basicIngredients.length > 0 
-                      ? recipe.basicIngredients.map(i => i.charAt(0).toUpperCase() + i.slice(1)).join(', ') 
-                      : 'Keine'}
-                  </div>
+                  ${recipe.url ? html`
+                    <a class="recipe-link" href="${recipe.url}" target="_blank">
+                      👉 REZEPT ÖFFNEN <ha-icon icon="mdi:open-in-new" style="--mdc-icon-size: 14px;"></ha-icon>
+                    </a>
+                  ` : ''}
                 </div>
 
-                <div class="ingredient-section">
-                  <span class="ingredient-label">🛒 Einkaufen:</span>
-                  <div class="ingredient-list missing">
-                    ${recipe.missingIngredients && recipe.missingIngredients.length > 0 
-                      ? recipe.missingIngredients.map(i => i.trim().charAt(0).toUpperCase() + i.trim().slice(1)).join(', ') 
-                      : 'Nichts'}
+                <div class="content-zone">
+
+                  <div class="ingredient-section">
+                    <span class="ingredient-label">✅ Vorhanden:</span>
+                    <div class="ingredient-list">
+                      ${recipe.matchingIngredients && recipe.matchingIngredients.length > 0
+                        ? recipe.matchingIngredients.map(i => {
+                            
+                            const name = i.name
+                              ? i.name.charAt(0).toUpperCase() + i.name.slice(1)
+                              : 'Unbekannt';
+
+                            if (i.status === "expired") {
+                              return html`<span class="expired">${name}</span>`;
+                            }
+
+                            if (i.status === "expiring") {
+                              return html`<span class="expiring">${name}</span>`;
+                            }
+
+                            return html`${name}`;
+
+                          }).reduce((prev, curr, index) => [
+                            prev,
+                            index > 0 ? ', ' : '',
+                            curr
+                          ], [])
+                        : 'Keine'}
+                    </div>
                   </div>
+
+                  <div class="ingredient-section">
+                    <span class="ingredient-label">🧂 Basics (Ignoriert):</span>
+                    <div class="ingredient-list">
+                      ${recipe.basicIngredients && recipe.basicIngredients.length > 0 
+                        ? recipe.basicIngredients.map(i => i.charAt(0).toUpperCase() + i.slice(1)).join(', ') 
+                        : 'Keine'}
+                    </div>
+                  </div>
+
+                  <div class="ingredient-section">
+                    <span class="ingredient-label">🛒 Einkaufen:</span>
+                    <div class="ingredient-list missing">
+                      ${recipe.missingIngredients && recipe.missingIngredients.length > 0 
+                        ? recipe.missingIngredients.map(i => i.trim().charAt(0).toUpperCase() + i.trim().slice(1)).join(', ') 
+                        : 'Nichts'}
+                    </div>
+                  </div>
+
                 </div>
-              </div>
 
-              <div class="action-zone">
-                <button class="btn" title="Fehlende Zutaten auf Einkaufsliste" @click="${() => this._callBridgeService('add_missing_ingredients', index)}">
-                  <ha-icon icon="mdi:cart-plus" style="color: var(--primary-color);"></ha-icon>
-                </button>
-                
-                <button class="btn" title="In den Mealplan eintragen" @click="${() => this._callBridgeService('set_to_next_free_day', index)}">
-                  <ha-icon icon="mdi:calendar-plus" style="color: var(--info-color);"></ha-icon>
-                </button>
-              </div>
+                <div class="action-zone">
+                  <button class="btn" @click="${() => this._callBridgeService('add_missing_ingredients', index)}">
+                    <ha-icon icon="mdi:cart-plus"></ha-icon>
+                  </button>
+                  <button class="btn" @click="${() => this._callBridgeService('set_to_next_free_day', index)}">
+                    <ha-icon icon="mdi:calendar-plus"></ha-icon>
+                  </button>
+                </div>
 
-            </div>
-          `)}
+              </div>
+            `;
+          })}
         </div>
       </ha-card>
     `;
   }
 
-  getLayoutOptions() {
+  static getLayoutOptions(config) {
+    const haColumns = config?.layout?.grid_columns || 12;
     return {
       grid_rows: "auto",
-      grid_columns: this.config.layout?.grid_columns || 12,      
-      grid_min_columns: 3,   
-      grid_max_columns: 12,  
-    };
-  }
-
-  static getLayoutOptions() {
-    return {
-      grid_rows: "auto",
-      grid_columns: 12,
+      grid_columns: haColumns,
       grid_min_columns: 3,
       grid_max_columns: 12,
     };
@@ -359,7 +379,8 @@ class MealieGrocyCard extends LitElement {
   static getStubConfig() {
     return {
       entity: "sensor.mealie_grocy_kochvorschlage",
-      recipe_count: 4
+      recipe_count: 4,
+      display_mode: "default"
     };
   }
 
