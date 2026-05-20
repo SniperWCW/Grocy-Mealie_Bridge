@@ -1,0 +1,15 @@
+{
+  "services": {
+    "set_to_next_free_day": {
+      "fields": {
+        "entry_type": {
+          "state": {
+            "breakfast": "Frühstück",
+            "lunch": "Mittagessen",
+            "dinner": "Abendessen"
+          }
+        }
+      }
+    }
+  }
+}
