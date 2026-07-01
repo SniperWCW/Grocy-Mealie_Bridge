@@ -41,6 +41,11 @@ def _get_card_resource_url() -> str:
         _LOGGER.debug("Konnte Versionsnummer fuer Karten-Cachebuster nicht lesen: %s", err)
     return f"{URL_BASE}/{CARD_FILENAME}?v={version}"
 
+
+def _get_entry_runtime(hass: HomeAssistant, entry_id: str) -> dict:
+    """Return the runtime data for the active config entry."""
+    return hass.data.get(DOMAIN, {}).get(entry_id, {})
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Wird von HA aufgerufen, wenn die Integration geladen oder gestartet wird.
 
@@ -71,7 +76,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if os.path.isdir(frontend_dir):
             _LOGGER.info("Registriere statischen Pfad %s für %s", URL_BASE, frontend_dir)
             
-            hass.http.app.router.add_static(URL_BASE, frontend_dir, name="mealie_grocy_bridge_frontend")
+            if "mealie_grocy_bridge_frontend" not in hass.http.app.router:
+                hass.http.app.router.add_static(
+                    URL_BASE,
+                    frontend_dir,
+                    name="mealie_grocy_bridge_frontend",
+                )
             
             # 2. Lovelace-Ressourcen-Datenbank anpassen, falls das Frontend aktiv ist
             if "frontend" in hass.data and "lovelace" in hass.data["frontend"]:
@@ -79,11 +89,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 if hasattr(lovelace, "resources"):
                     resources = lovelace.resources
                     card_url = _get_card_resource_url()
+                    legacy_card_url = f"{URL_BASE}/{CARD_FILENAME}"
                     
                     # Verhindert doppelte Einträge bei Neustarts
                     #if not any(r.get("url") == card_url for r in resources.async_items()):
                     items = await resources.async_items()
-                    if not any(r.get("url") == card_url for r in items):
+                    existing_urls = {r.get("url") for r in items}
+                    if legacy_card_url in existing_urls and card_url not in existing_urls:
+                        for item in items:
+                            if item.get("url") == legacy_card_url and item.get("id") is not None:
+                                await resources.async_delete_item(item["id"])
+                    if card_url not in existing_urls:
                         _LOGGER.info("Registriere Mealie-Grocy Custom Card im Frontend...")
                         # await resources.async_create_item({
                         #     "res_type": "module",
@@ -105,7 +121,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # -----------------------------------------------------------------
     def get_recipe_by_index(index: int):
         """Hilfsfunktion, um anhand eines numerischen Index das passende Rezept aus dem Coordinator zu ziehen."""
-        coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+        runtime_data = _get_entry_runtime(hass, entry.entry_id)
+        coordinator = runtime_data.get("coordinator")
         if not coordinator or not coordinator.data:
             _LOGGER.warning("Coordinator noch nicht bereit oder keine Rezepte geladen.")
             return None
@@ -134,7 +151,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.info("Keine fehlenden Zutaten für '%s' vorhanden.", recipe.get("recipeName"))
             return
 
-        current_config = hass.data[DOMAIN][entry.entry_id]
+        current_config = _get_entry_runtime(hass, entry.entry_id)
         todo_entity = current_config.get(CONF_TODO_ENTITY)
 
         if not todo_entity:
@@ -193,7 +210,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         recipe_id = recipe.get("recipeId")
         recipe_name = recipe.get("recipeName", "Unbekanntes Rezept")
 
-        current_config = hass.data[DOMAIN][entry.entry_id]
+        current_config = _get_entry_runtime(hass, entry.entry_id)
         mealie_url = current_config[CONF_MEALIE_URL].rstrip("/")
         if not mealie_url.startswith(("http://", "https://")):
             mealie_url = f"http://{mealie_url}"
@@ -261,7 +278,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     except Exception as notify_err:
                         _LOGGER.error("Konnte Push-Nachricht nicht senden: %s", notify_err)
 
-                    coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+                    coordinator = _get_entry_runtime(hass, entry.entry_id).get("coordinator")
                     if coordinator:
                         _LOGGER.info("Triggere sofortigen Sensor-Refresh...")
                         hass.async_create_task(coordinator.async_refresh())
