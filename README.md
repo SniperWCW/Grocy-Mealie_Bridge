@@ -36,7 +36,7 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 - **Verbesserte Datenbasis für Automationen:**
   - Status kann nun auch für zukünftige Automationen genutzt werden (z. B. Benachrichtigungen oder Einkaufsempfehlungen)
 
-Ab Version 0.2.5b5
+Ab Version 0.2.5b6
 <img width="511" height="757" alt="image" src="https://github.com/user-attachments/assets/f9dfaae3-9d62-4950-95e1-efe39bf625e4" />
  
 - **Aktueller Speiseplan in der Karte (NEU):**

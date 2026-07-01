@@ -389,8 +389,8 @@ class MealieGrocyCard extends LitElement {
 
       .mealplan-item {
         display: grid;
-        grid-template-columns: minmax(110px, 150px) 1fr;
-        gap: 10px;
+        grid-template-columns: minmax(110px, 150px) minmax(0, 1fr);
+        gap: 12px;
         padding: 10px 12px;
         border-radius: 14px;
         background: rgba(var(--rgb-primary-text-color), 0.035);
@@ -407,6 +407,50 @@ class MealieGrocyCard extends LitElement {
         margin-top: 4px;
         font-size: 0.75rem;
         color: var(--secondary-text-color);
+      }
+
+      .mealplan-content {
+        display: grid;
+        grid-template-columns: 72px minmax(0, 1fr);
+        gap: 12px;
+        align-items: center;
+      }
+
+      .mealplan-thumb {
+        width: 72px;
+        height: 72px;
+        object-fit: cover;
+        border-radius: 12px;
+        background: rgba(var(--rgb-primary-text-color), 0.06);
+      }
+
+      .mealplan-text {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .mealplan-recipe-name {
+        font-weight: 600;
+        line-height: 1.25;
+      }
+
+      .mealplan-times {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .mealplan-time-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(var(--rgb-primary-text-color), 0.05);
+        color: var(--secondary-text-color);
+        font-size: 0.75rem;
       }
 
       .mealplan-empty {
@@ -435,6 +479,15 @@ class MealieGrocyCard extends LitElement {
 
         .mealplan-item {
           grid-template-columns: 1fr;
+        }
+
+        .mealplan-content {
+          grid-template-columns: 56px minmax(0, 1fr);
+        }
+
+        .mealplan-thumb {
+          width: 56px;
+          height: 56px;
         }
       }
     `;
@@ -596,7 +649,15 @@ class MealieGrocyCard extends LitElement {
                         <div class="mealplan-day">${this._formatMealplanDate(entry)}</div>
                         <div class="mealplan-entry-type">${this._formatEntryType(entry.entryType)}</div>
                       </div>
-                      <div>${entry.recipeName}</div>
+                      <div class="mealplan-content">
+                        ${entry.imageUrl ? html`
+                          <img class="mealplan-thumb" src="${entry.imageUrl}" alt="${entry.recipeName}">
+                        ` : ""}
+                        <div class="mealplan-text">
+                          <div class="mealplan-recipe-name">${entry.recipeName}</div>
+                          ${this._renderMealplanTimes(entry)}
+                        </div>
+                      </div>
                     </div>
                   `)}
                 </div>
@@ -764,6 +825,26 @@ class MealieGrocyCard extends LitElement {
       meal: "Mahlzeit",
     };
     return mapping[entryType] || entryType || "Eintrag";
+  }
+
+  _renderMealplanTimes(entry) {
+    const timeItems = [
+      entry?.prepTime ? { label: "Vorb.", value: entry.prepTime } : null,
+      entry?.cookTime ? { label: "Koch.", value: entry.cookTime } : null,
+      entry?.totalTime ? { label: "Gesamt", value: entry.totalTime } : null,
+    ].filter(Boolean);
+
+    if (timeItems.length === 0) {
+      return "";
+    }
+
+    return html`
+      <div class="mealplan-times">
+        ${timeItems.map((item) => html`
+          <div class="mealplan-time-pill">${item.label}: ${item.value}</div>
+        `)}
+      </div>
+    `;
   }
 }
 

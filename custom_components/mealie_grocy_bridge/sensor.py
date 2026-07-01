@@ -93,6 +93,71 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         return "Unbekannt"
 
     @staticmethod
+    def _normalize_duration(value):
+        """Normalize duration values from Mealie into displayable text."""
+        if value is None or value == "":
+            return None
+        if isinstance(value, (int, float)):
+            return f"{int(value)} min"
+        text_value = str(value).strip()
+        if not text_value:
+            return None
+        return text_value
+
+    @staticmethod
+    def _extract_recipe_image(plan, mealie_url):
+        """Extract a recipe image URL from a mealplan entry when available."""
+        recipe_obj = plan.get("recipe")
+        if not isinstance(recipe_obj, dict):
+            return None
+
+        for key in ("image", "imageUrl", "recipeImage", "thumbnail"):
+            value = recipe_obj.get(key)
+            if isinstance(value, str) and value.strip():
+                if value.startswith(("http://", "https://")):
+                    return value.strip()
+                return f"{mealie_url}/{value.lstrip('/')}"
+
+        recipe_asset = recipe_obj.get("recipeAsset")
+        if isinstance(recipe_asset, dict):
+            for key in ("image", "url", "path"):
+                value = recipe_asset.get(key)
+                if isinstance(value, str) and value.strip():
+                    if value.startswith(("http://", "https://")):
+                        return value.strip()
+                    return f"{mealie_url}/{value.lstrip('/')}"
+
+        return None
+
+    @classmethod
+    def _extract_mealplan_recipe_meta(cls, plan, mealie_url):
+        """Extract image and timing metadata from a mealplan recipe."""
+        recipe_obj = plan.get("recipe")
+        recipe_meta = {
+            "imageUrl": cls._extract_recipe_image(plan, mealie_url),
+            "prepTime": None,
+            "cookTime": None,
+            "totalTime": None,
+        }
+
+        if not isinstance(recipe_obj, dict):
+            return recipe_meta
+
+        recipe_meta["prepTime"] = cls._normalize_duration(
+            recipe_obj.get("prepTime") or recipe_obj.get("prepTimeMinutes")
+        )
+        recipe_meta["cookTime"] = cls._normalize_duration(
+            recipe_obj.get("cookTime")
+            or recipe_obj.get("performTime")
+            or recipe_obj.get("performTimeMinutes")
+        )
+        recipe_meta["totalTime"] = cls._normalize_duration(
+            recipe_obj.get("totalTime") or recipe_obj.get("totalTimeMinutes")
+        )
+
+        return recipe_meta
+
+    @staticmethod
     def _clean_basic_ingredient(text_low, fallback):
         """Normalize basic ingredients by stripping amounts and units."""
         cleaned_text = str(text_low or "").lower().replace("-", " ").strip()
@@ -212,12 +277,18 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                             if not (week_start <= plan_date <= week_end):
                                 continue
 
+                            recipe_meta = self._extract_mealplan_recipe_meta(plan, mealie_url)
+
                             weekly_mealplan.append({
                                 "date": plan_date.isoformat(),
                                 "dateLabel": plan_date.strftime("%d.%m.%Y"),
                                 "weekday": plan_date.strftime("%A"),
                                 "entryType": str(plan.get("entryType", "meal")).strip(),
                                 "recipeName": self._extract_recipe_name(plan),
+                                "imageUrl": recipe_meta["imageUrl"],
+                                "prepTime": recipe_meta["prepTime"],
+                                "cookTime": recipe_meta["cookTime"],
+                                "totalTime": recipe_meta["totalTime"],
                             })
         except Exception as err:
             _LOGGER.error("Fehler im Speiseplan-Filter: %s", err)
