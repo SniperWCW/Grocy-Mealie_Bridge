@@ -16,6 +16,8 @@ from .const import (
     CONF_GROCY_TOKEN,
     CONF_EXCLUDED_FOODS,
     CONF_TODO_ENTITY,
+    CONF_DAILY_MEALPLAN_SYNC_ENABLED,
+    CONF_DAILY_MEALPLAN_SYNC_TIME,
 )
 
 class MealieGrocyBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -23,6 +25,7 @@ class MealieGrocyBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     # Version des Konfigurations-Flows. Wichtig, falls sich Eingabefelder in der Zukunft ändern
     VERSION = 1
+    TIME_VALIDATOR = vol.Match(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
     async def async_step_user(self, user_input=None):
         """Wird aufgerufen, wenn der Nutzer die Integration neu hinzufügen möchte."""
@@ -60,6 +63,8 @@ class MealieGrocyBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 
                 # Dropdown-Auswahlfeld für die gewünschte To-Do-Liste
                 vol.Optional(CONF_TODO_ENTITY): vol.In(todo_options),
+                vol.Optional(CONF_DAILY_MEALPLAN_SYNC_ENABLED, default=False): bool,
+                vol.Optional(CONF_DAILY_MEALPLAN_SYNC_TIME, default="07:00"): self.TIME_VALIDATOR,
             }
         )
 
@@ -99,6 +104,10 @@ class MealieGrocyBridgeOptionsFlowHandler(config_entries.OptionsFlow):
         current_grocy_token = options.get(CONF_GROCY_TOKEN) or data.get(CONF_GROCY_TOKEN) or ""
         current_exclusions = options.get(CONF_EXCLUDED_FOODS) or data.get(CONF_EXCLUDED_FOODS) or ""
         current_todo = options.get(CONF_TODO_ENTITY) or data.get(CONF_TODO_ENTITY) or ""
+        current_daily_sync_enabled = options.get(CONF_DAILY_MEALPLAN_SYNC_ENABLED)
+        if current_daily_sync_enabled is None:
+            current_daily_sync_enabled = data.get(CONF_DAILY_MEALPLAN_SYNC_ENABLED, False)
+        current_daily_sync_time = options.get(CONF_DAILY_MEALPLAN_SYNC_TIME) or data.get(CONF_DAILY_MEALPLAN_SYNC_TIME) or "07:00"
 
         # Erneut alle aktuellen To-Do-Listen aus HA laden (falls in der Zwischenzeit neue Listen dazukamen)
         todo_entities = self.hass.states.async_entity_ids("todo")
@@ -113,6 +122,8 @@ class MealieGrocyBridgeOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Required(CONF_GROCY_TOKEN, default=current_grocy_token): str,
                 vol.Optional(CONF_EXCLUDED_FOODS, default=current_exclusions): str,
                 vol.Optional(CONF_TODO_ENTITY, default=current_todo): vol.In(todo_options),
+                vol.Optional(CONF_DAILY_MEALPLAN_SYNC_ENABLED, default=current_daily_sync_enabled): bool,
+                vol.Optional(CONF_DAILY_MEALPLAN_SYNC_TIME, default=current_daily_sync_time): self.TIME_VALIDATOR,
             }
         )
 

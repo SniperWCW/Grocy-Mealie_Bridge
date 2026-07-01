@@ -1,4 +1,15 @@
 {
+  "config": {
+    "step": {
+      "user": {
+        "data": {
+          "todo_entity": "To-do-Liste",
+          "daily_mealplan_sync_enabled": "Täglichen Essensplan-Sync aktivieren",
+          "daily_mealplan_sync_time": "Uhrzeit für täglichen Essensplan-Sync (HH:MM)"
+        }
+      }
+    }
+  },
   "services": {
     "set_to_next_free_day": {
       "fields": {

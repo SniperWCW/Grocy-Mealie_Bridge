@@ -6,11 +6,14 @@ und stellt die beiden zentralen Home Assistant Dienste (Services) bereit.
 import logging
 import os
 import json
+import re
 #import aiohttp
 from datetime import datetime, timedelta
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.event import async_track_time_change
+from homeassistant.util import dt as dt_util
 
 # Importe der Konstanten aus der lokalen const.py
 from .const import (
@@ -20,6 +23,8 @@ from .const import (
     CONF_GROCY_URL,
     CONF_GROCY_TOKEN,
     CONF_TODO_ENTITY,  # Enthält die Entity-ID der in der UI gewählten To-Do-Liste
+    CONF_DAILY_MEALPLAN_SYNC_ENABLED,
+    CONF_DAILY_MEALPLAN_SYNC_TIME,
 )
 
 # Logger-Instanz für Fehlermeldungen und Status-Infos im Home Assistant Log
@@ -46,6 +51,301 @@ def _get_entry_runtime(hass: HomeAssistant, entry_id: str) -> dict:
     """Return the runtime data for the active config entry."""
     return hass.data.get(DOMAIN, {}).get(entry_id, {})
 
+
+def _normalize_list_item(text: str) -> str:
+    """Normalize list items for duplicate comparison."""
+    return re.sub(r"\s+", " ", str(text or "").strip().lower())
+
+
+def _coerce_time_value(value) -> tuple[int, int]:
+    """Convert configured time values to hour and minute."""
+    if hasattr(value, "hour") and hasattr(value, "minute"):
+        return int(value.hour), int(value.minute)
+
+    text_value = str(value or "07:00").strip()
+    parts = text_value.split(":")
+    if len(parts) < 2:
+        return 7, 0
+    return int(parts[0]), int(parts[1])
+
+
+def _build_grocy_products_map(grocy_data, today):
+    """Create a normalized lookup map for Grocy stock."""
+    grocy_products_map = {}
+    for item in (grocy_data or []):
+        if isinstance(item, dict) and "product" in item:
+            product_name = item.get("product", {}).get("name")
+            if product_name:
+                orig_name = str(product_name).strip()
+                grocy_products_map[orig_name.lower()] = {
+                    "orig_name": orig_name,
+                    "regex": re.compile(r"\b" + re.escape(orig_name.lower()) + r"\b"),
+                }
+    return grocy_products_map
+
+
+def _extract_missing_ingredients(recipe, grocy_products_map, basics_to_ignore):
+    """Extract missing ingredients for one recipe using the existing matching heuristics."""
+    all_ingredients = recipe.get("recipeIngredient") or recipe.get("recipeIngredients") or []
+    relevant_ingredients = []
+
+    for ingredient in all_ingredients:
+        if not isinstance(ingredient, dict):
+            continue
+        display_text = ingredient.get("display") or ingredient.get("note") or ingredient.get("originalText") or ""
+        text_low = str(display_text).lower()
+        if not text_low:
+            continue
+        if any(basic in text_low for basic in basics_to_ignore):
+            continue
+        relevant_ingredients.append(ingredient)
+
+    missing_ingredients = []
+
+    for ingredient in relevant_ingredients:
+        ing_original_text = ingredient.get("display") or ingredient.get("note") or ingredient.get("originalText") or ""
+        ing_text_low = str(ing_original_text).lower()
+        ing_words = [w for w in re.split(r"[\s,()./]+", ing_text_low) if len(w) > 2 and not w.isdigit()]
+
+        found_product = None
+
+        for stock_low, info in grocy_products_map.items():
+            if any(nw in stock_low for nw in ["yumyum", "nudeln", "ramen", "reis"]):
+                if any(fw in ing_text_low for fw in ["wings", "schenkel", "filet", "keulen"]):
+                    continue
+                if any(kw in stock_low for kw in ["nouilles", "spring", "asia", "happiness"]):
+                    if not any(kw in ing_text_low for kw in ["nouilles", "spring", "asia", "happiness"]):
+                        continue
+
+            if info["regex"].search(ing_text_low):
+                found_product = info
+                break
+
+        if not found_product:
+            for stock_low, info in grocy_products_map.items():
+                if any(nw in stock_low for nw in ["yumyum", "nudeln", "ramen", "reis"]):
+                    if any(fw in ing_text_low for fw in ["wings", "schenkel", "filet", "keulen"]):
+                        continue
+
+                stock_words = [p.strip() for p in re.split(r"[\s\-,._()]+", stock_low) if len(p.strip()) > 2]
+                if not stock_words:
+                    continue
+
+                if "chicken" in ing_words and "chicken" in stock_words:
+                    if "wings" in ing_words and "wings" not in stock_words:
+                        continue
+                    if "nuggets" in ing_words and "nuggets" not in stock_words:
+                        continue
+
+                if any(nw in stock_low for nw in ["nudeln", "ramen", "yumyum", "reis"]):
+                    if not any(nw in ing_text_low for nw in ["nudeln", "ramen", "suppe", "yumyum", "reis"]):
+                        continue
+                    if any(kw in stock_low for kw in ["nouilles", "spring", "asia", "happiness"]):
+                        if not any(kw in ing_text_low for kw in ["nouilles", "spring", "asia", "happiness"]):
+                            continue
+                    if "wan-tan" in stock_low and "wan-tan" not in ing_text_low:
+                        continue
+
+                match_found = False
+                for word in ing_words:
+                    for stock_word in stock_words:
+                        if (
+                            word == stock_word
+                            or word + "n" == stock_word
+                            or word + "s" == stock_word
+                            or word + "en" == stock_word
+                            or stock_word + "n" == word
+                            or stock_word + "s" == word
+                        ):
+                            found_product = info
+                            match_found = True
+                            break
+                    if match_found:
+                        break
+                if match_found:
+                    break
+
+        if not found_product:
+            cleaned_ingredient = str(ing_original_text).strip()
+            if cleaned_ingredient:
+                missing_ingredients.append(cleaned_ingredient[0].upper() + cleaned_ingredient[1:])
+
+    return missing_ingredients
+
+
+async def _fetch_todo_items(hass: HomeAssistant, todo_entity: str) -> list[dict]:
+    """Fetch active items from the target to-do list."""
+    try:
+        response = await hass.services.async_call(
+            "todo",
+            "get_items",
+            {
+                "entity_id": todo_entity,
+                "status": ["needs_action"],
+            },
+            blocking=True,
+            return_response=True,
+        )
+    except Exception as err:
+        _LOGGER.error("Konnte bestehende To-Do-Einträge für %s nicht laden: %s", todo_entity, err)
+        return []
+
+    if not isinstance(response, dict):
+        return []
+
+    entity_response = response.get(todo_entity, {})
+    return entity_response.get("items", []) if isinstance(entity_response, dict) else []
+
+
+async def _run_daily_mealplan_sync(hass: HomeAssistant, entry_id: str) -> None:
+    """Sync missing ingredients from today's lunch and dinner meal plan to the todo list."""
+    runtime_data = _get_entry_runtime(hass, entry_id)
+    if not runtime_data:
+        return
+
+    mealie_url = runtime_data[CONF_MEALIE_URL].rstrip("/")
+    if not mealie_url.startswith(("http://", "https://")):
+        mealie_url = f"http://{mealie_url}"
+    grocy_url = runtime_data[CONF_GROCY_URL].rstrip("/")
+    if not grocy_url.startswith(("http://", "https://")):
+        grocy_url = f"http://{grocy_url}"
+
+    todo_entity = runtime_data.get(CONF_TODO_ENTITY)
+    if not todo_entity:
+        _LOGGER.warning("Täglicher Essensplan-Sync übersprungen: keine To-Do-Liste konfiguriert.")
+        return
+
+    session = async_get_clientsession(hass)
+    today = dt_util.now().date()
+    today_str = today.isoformat()
+    mealie_headers = {"Authorization": f"Bearer {runtime_data[CONF_MEALIE_TOKEN]}"}
+    grocy_headers = {"GROCY-API-KEY": runtime_data[CONF_GROCY_TOKEN]}
+    basics_to_ignore = [item.lower() for item in runtime_data.get("excluded_foods_list", [])]
+
+    mealplan_url = f"{mealie_url}/api/households/mealplans?startTime={today_str}&endTime={today_str}&perPage=-1"
+
+    try:
+        async with session.get(mealplan_url, headers=mealie_headers, timeout=15) as response:
+            if response.status != 200:
+                _LOGGER.error("Täglicher Essensplan-Sync: Mealie-Speiseplan konnte nicht geladen werden (%s).", response.status)
+                return
+            mealplan_data = await response.json()
+    except Exception as err:
+        _LOGGER.error("Täglicher Essensplan-Sync: Fehler beim Abrufen des Speiseplans: %s", err)
+        return
+
+    items = mealplan_data.get("items", mealplan_data) if isinstance(mealplan_data, dict) else mealplan_data
+    todays_plans = [
+        plan for plan in (items or [])
+        if isinstance(plan, dict)
+        and str(plan.get("entryType", "")).strip().lower() in {"lunch", "dinner"}
+    ]
+
+    if not todays_plans:
+        _LOGGER.info("Täglicher Essensplan-Sync: kein Mittag- oder Abendessen für %s gefunden.", today_str)
+        return
+
+    try:
+        async with session.get(f"{grocy_url}/api/stock", headers=grocy_headers, timeout=15) as response:
+            if response.status != 200:
+                _LOGGER.error("Täglicher Essensplan-Sync: Grocy-Bestand konnte nicht geladen werden (%s).", response.status)
+                return
+            grocy_data = await response.json()
+    except Exception as err:
+        _LOGGER.error("Täglicher Essensplan-Sync: Fehler beim Abrufen des Grocy-Bestands: %s", err)
+        return
+
+    grocy_products_map = _build_grocy_products_map(grocy_data, today)
+    missing_ingredients = []
+
+    for plan in todays_plans:
+        recipe_obj = plan.get("recipe")
+        recipe_slug = recipe_obj.get("slug") if isinstance(recipe_obj, dict) else None
+        if not recipe_slug:
+            continue
+
+        try:
+            async with session.get(f"{mealie_url}/api/recipes/{recipe_slug}", headers=mealie_headers, timeout=15) as response:
+                if response.status != 200:
+                    _LOGGER.warning("Täglicher Essensplan-Sync: Rezept %s konnte nicht geladen werden (%s).", recipe_slug, response.status)
+                    continue
+                recipe_details = await response.json()
+        except Exception as err:
+            _LOGGER.warning("Täglicher Essensplan-Sync: Fehler beim Laden von Rezept %s: %s", recipe_slug, err)
+            continue
+
+        missing_ingredients.extend(
+            _extract_missing_ingredients(recipe_details, grocy_products_map, basics_to_ignore)
+        )
+
+    if not missing_ingredients:
+        _LOGGER.info("Täglicher Essensplan-Sync: keine fehlenden Zutaten für %s gefunden.", today_str)
+        return
+
+    existing_items = await _fetch_todo_items(hass, todo_entity)
+    existing_normalized = {
+        _normalize_list_item(item.get("summary") or item.get("item") or "")
+        for item in existing_items
+        if isinstance(item, dict)
+    }
+
+    normalized_to_add = set()
+    added_count = 0
+
+    for ingredient in missing_ingredients:
+        normalized = _normalize_list_item(ingredient)
+        if not normalized or normalized in existing_normalized or normalized in normalized_to_add:
+            continue
+
+        try:
+            await hass.services.async_call(
+                "todo",
+                "add_item",
+                {
+                    "entity_id": todo_entity,
+                    "item": ingredient,
+                    "description": f"für Essensplan {today.strftime('%d.%m.%Y')}",
+                },
+                blocking=True,
+            )
+            normalized_to_add.add(normalized)
+            added_count += 1
+        except Exception as err:
+            _LOGGER.error("Täglicher Essensplan-Sync: Fehler beim Hinzufügen von '%s' zu %s: %s", ingredient, todo_entity, err)
+
+    _LOGGER.info(
+        "Täglicher Essensplan-Sync abgeschlossen: %s neue Einträge zur Liste %s hinzugefügt.",
+        added_count,
+        todo_entity,
+    )
+
+
+def _setup_daily_mealplan_sync(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Register or remove the daily meal plan sync based on the current config."""
+    runtime_data = _get_entry_runtime(hass, entry.entry_id)
+    if not runtime_data:
+        return
+
+    unsubscribe = runtime_data.pop("daily_sync_unsub", None)
+    if unsubscribe:
+        unsubscribe()
+
+    if not runtime_data.get(CONF_DAILY_MEALPLAN_SYNC_ENABLED):
+        return
+
+    hour, minute = _coerce_time_value(runtime_data.get(CONF_DAILY_MEALPLAN_SYNC_TIME, "07:00"))
+
+    async def _handle_daily_sync(now):
+        await _run_daily_mealplan_sync(hass, entry.entry_id)
+
+    runtime_data["daily_sync_unsub"] = async_track_time_change(
+        hass,
+        _handle_daily_sync,
+        hour=hour,
+        minute=minute,
+        second=0,
+    )
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Wird von HA aufgerufen, wenn die Integration geladen oder gestartet wird.
 
@@ -66,6 +366,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         **config,
         "excluded_foods_list": excluded_foods_list
     }
+
+    _setup_daily_mealplan_sync(hass, entry)
 
     # -----------------------------------------------------------------
     # FRONTEND: Automatische Registrierung der Custom Card
@@ -310,6 +612,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor"])
 
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
+        runtime_data = hass.data[DOMAIN].pop(entry.entry_id)
+        unsubscribe = runtime_data.get("daily_sync_unsub")
+        if unsubscribe:
+            unsubscribe()
 
     return unload_ok
