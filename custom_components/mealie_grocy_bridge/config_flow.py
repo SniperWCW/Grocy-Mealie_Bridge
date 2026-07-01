@@ -20,12 +20,13 @@ from .const import (
     CONF_DAILY_MEALPLAN_SYNC_TIME,
 )
 
+TIME_VALIDATOR = vol.Match(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+
 class MealieGrocyBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Klasse zur Handhabung der Ersteinrichtung der Integration."""
 
     # Version des Konfigurations-Flows. Wichtig, falls sich Eingabefelder in der Zukunft ändern
     VERSION = 1
-    TIME_VALIDATOR = vol.Match(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
     async def async_step_user(self, user_input=None):
         """Wird aufgerufen, wenn der Nutzer die Integration neu hinzufügen möchte."""
@@ -64,7 +65,7 @@ class MealieGrocyBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # Dropdown-Auswahlfeld für die gewünschte To-Do-Liste
                 vol.Optional(CONF_TODO_ENTITY): vol.In(todo_options),
                 vol.Optional(CONF_DAILY_MEALPLAN_SYNC_ENABLED, default=False): bool,
-                vol.Optional(CONF_DAILY_MEALPLAN_SYNC_TIME, default="07:00"): self.TIME_VALIDATOR,
+                vol.Optional(CONF_DAILY_MEALPLAN_SYNC_TIME, default="07:00"): TIME_VALIDATOR,
             }
         )
 
@@ -122,7 +123,7 @@ class MealieGrocyBridgeOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Required(CONF_GROCY_TOKEN, default=current_grocy_token): str,
             vol.Optional(CONF_EXCLUDED_FOODS, default=current_exclusions): str,
             vol.Optional(CONF_DAILY_MEALPLAN_SYNC_ENABLED, default=current_daily_sync_enabled): bool,
-            vol.Optional(CONF_DAILY_MEALPLAN_SYNC_TIME, default=current_daily_sync_time): self.TIME_VALIDATOR,
+            vol.Optional(CONF_DAILY_MEALPLAN_SYNC_TIME, default=current_daily_sync_time): TIME_VALIDATOR,
         }
 
         if todo_options:
