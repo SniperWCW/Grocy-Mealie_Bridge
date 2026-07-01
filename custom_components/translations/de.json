@@ -1,4 +1,7 @@
 {
+  "error": {
+    "invalid_time": "Bitte eine Uhrzeit im Format HH:MM eingeben."
+  },
   "config": {
     "step": {
       "user": {
