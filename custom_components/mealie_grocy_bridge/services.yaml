@@ -11,6 +11,22 @@ set_to_next_free_day:
           min: 0
           max: 20
           mode: box
+    selected_date:
+      name: "Datum"
+      description: "Optionales Wunschdatum im Format JJJJ-MM-TT. Leer = nÃ¤chster freier Tag."
+      required: false
+      selector:
+        text:
+    entry_type:
+      name: "Mahlzeit Typ"
+      description: "Optionaler Typ wie breakfast, lunch oder dinner."
+      required: false
+      selector:
+        select:
+          options:
+            - "breakfast"
+            - "lunch"
+            - "dinner"
 
 add_missing_ingredients:
   name: "Fehlende Zutaten eines Index auf To-Do-Liste setzen"

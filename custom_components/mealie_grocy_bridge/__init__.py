@@ -5,6 +5,7 @@ und stellt die beiden zentralen Home Assistant Dienste (Services) bereit.
 """
 import logging
 import os
+import json
 #import aiohttp
 from datetime import datetime, timedelta
 from homeassistant.config_entries import ConfigEntry
@@ -27,6 +28,18 @@ CONF_EXCLUDED_FOODS = "excluded_foods"
 
 URL_BASE = "/mealie_grocy_bridge_ui"
 CARD_FILENAME = "mealie-grocy-card.js"
+
+
+def _get_card_resource_url() -> str:
+    """Build a cache-busted resource URL for the custom card."""
+    manifest_path = os.path.join(os.path.dirname(__file__), "manifest.json")
+    version = "dev"
+    try:
+        with open(manifest_path, encoding="utf-8") as manifest_file:
+            version = json.load(manifest_file).get("version", version)
+    except Exception as err:
+        _LOGGER.debug("Konnte Versionsnummer fuer Karten-Cachebuster nicht lesen: %s", err)
+    return f"{URL_BASE}/{CARD_FILENAME}?v={version}"
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Wird von HA aufgerufen, wenn die Integration geladen oder gestartet wird.
@@ -65,7 +78,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 lovelace = hass.data["frontend"]["lovelace"]
                 if hasattr(lovelace, "resources"):
                     resources = lovelace.resources
-                    card_url = f"{URL_BASE}/{CARD_FILENAME}"
+                    card_url = _get_card_resource_url()
                     
                     # Verhindert doppelte Einträge bei Neustarts
                     #if not any(r.get("url") == card_url for r in resources.async_items()):
@@ -187,6 +200,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             
         mealie_token = current_config[CONF_MEALIE_TOKEN]
         mealie_headers = {"Authorization": f"Bearer {mealie_token}"}
+        selected_date = call.data.get("selected_date")
+        entry_type = str(call.data.get("entry_type", "dinner")).strip().lower() or "dinner"
         
         session = async_get_clientsession(hass)
 
@@ -205,20 +220,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 
                 blocked_days = set()
                 for plan in items:
-                    if plan.get("entryType") == "dinner":
+                    if plan.get("entryType") == entry_type:
                         plan_date = plan.get("date")
                         if plan_date:
                             blocked_days.add(plan_date.split("T")[0])
 
-            target_date = today
-            for i in range(30):
-                if str(target_date) not in blocked_days:
-                    break  
-                target_date += timedelta(days=1)
+            if selected_date:
+                try:
+                    target_date = datetime.strptime(str(selected_date), "%Y-%m-%d").date()
+                except ValueError:
+                    _LOGGER.error("Ungültiges Datum '%s' für Rezeptplanung", selected_date)
+                    return
+            else:
+                target_date = today
+                for _ in range(30):
+                    if str(target_date) not in blocked_days:
+                        break
+                    target_date += timedelta(days=1)
             
             payload = {
                 "date": str(target_date),
-                "entryType": "dinner",
+                "entryType": entry_type,
                 "recipeId": recipe_id
             }
             
@@ -233,7 +255,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             "notify",
                             {
                                 "title": "🍳 Mealie Speiseplan",
-                                "message": f'"{recipe_name}" wurde erfolgreich für den {target_date.strftime("%d.%m.%Y")} eingetragen!'
+                                "message": f'"{recipe_name}" wurde erfolgreich für den {target_date.strftime("%d.%m.%Y")} als {entry_type} eingetragen!'
                             }
                         )
                     except Exception as notify_err:

@@ -82,12 +82,14 @@ class MealieGrocyCard extends LitElement {
       hass: {},
       config: {},
       _recipePage: { type: Number },
+      _scheduleOptions: { type: Object },
     };
   }
 
   constructor() {
     super();
     this._recipePage = 0;
+    this._scheduleOptions = {};
   }
 
   static getConfigElement() {
@@ -221,10 +223,62 @@ class MealieGrocyCard extends LitElement {
 
       .action-zone {
         display: flex;
+        flex-direction: column;
         justify-content: center;
-        gap: 24px;
+        gap: 12px;
         border-top: 1px solid rgba(var(--rgb-primary-text-color), 0.08);
         padding-top: 12px;
+      }
+
+      .schedule-zone {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .schedule-controls {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
+      }
+
+      .schedule-date {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid rgba(var(--rgb-primary-text-color), 0.12);
+        background: rgba(var(--rgb-primary-text-color), 0.03);
+        color: var(--primary-text-color);
+        border-radius: 12px;
+        padding: 8px 10px;
+        font: inherit;
+      }
+
+      .meal-type-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .meal-type-btn {
+        border: 1px solid rgba(var(--rgb-primary-text-color), 0.12);
+        background: rgba(var(--rgb-primary-text-color), 0.03);
+        color: var(--primary-text-color);
+        border-radius: 999px;
+        padding: 6px 10px;
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.78rem;
+      }
+
+      .meal-type-btn.active {
+        background: rgba(var(--rgb-primary-color), 0.18);
+        border-color: rgba(var(--rgb-primary-color), 0.35);
+      }
+
+      .action-buttons {
+        display: flex;
+        justify-content: center;
+        gap: 24px;
       }
 
       .btn {
@@ -267,6 +321,16 @@ class MealieGrocyCard extends LitElement {
       .recipe-card.compact .content-zone {
         font-size: 0.7rem;
         gap: 2px;
+      }
+
+      .recipe-card.compact .meal-type-btn {
+        padding: 4px 8px;
+        font-size: 0.68rem;
+      }
+
+      .recipe-card.compact .schedule-date {
+        padding: 6px 8px;
+        font-size: 0.72rem;
       }
 
       .recipe-card.compact .btn {
@@ -477,12 +541,37 @@ class MealieGrocyCard extends LitElement {
                     </div>
 
                     <div class="action-zone">
-                      <button class="btn" @click=${() => this._callBridgeService("add_missing_ingredients", recipe._globalIndex)}>
-                        <ha-icon icon="mdi:cart-plus"></ha-icon>
-                      </button>
-                      <button class="btn" @click=${() => this._callBridgeService("set_to_next_free_day", recipe._globalIndex)}>
-                        <ha-icon icon="mdi:calendar-plus"></ha-icon>
-                      </button>
+                      <div class="schedule-zone">
+                        <div class="ingredient-label">Datum wahlen:</div>
+                        <div class="schedule-controls">
+                          <input
+                            class="schedule-date"
+                            type="date"
+                            .value=${this._getScheduleOption(recipe._globalIndex).date}
+                            @change=${(event) => this._updateScheduleDate(recipe._globalIndex, event)}
+                          >
+                          <div class="meal-type-row">
+                            ${this._mealTypes().map((mealType) => html`
+                              <button
+                                type="button"
+                                class="meal-type-btn ${this._getScheduleOption(recipe._globalIndex).entryType === mealType.value ? "active" : ""}"
+                                @click=${() => this._updateScheduleType(recipe._globalIndex, mealType.value)}
+                              >
+                                ${mealType.label}
+                              </button>
+                            `)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="action-buttons">
+                        <button type="button" class="btn" @click=${() => this._callBridgeService("add_missing_ingredients", recipe._globalIndex)}>
+                          <ha-icon icon="mdi:cart-plus"></ha-icon>
+                        </button>
+                        <button type="button" class="btn" @click=${() => this._callBridgeService("set_to_next_free_day", recipe._globalIndex)}>
+                          <ha-icon icon="mdi:calendar-plus"></ha-icon>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 `;
@@ -543,6 +632,7 @@ class MealieGrocyCard extends LitElement {
   setConfig(config) {
     this.config = config;
     this._recipePage = 0;
+    this._scheduleOptions = {};
   }
 
   getCardSize() {
@@ -550,9 +640,19 @@ class MealieGrocyCard extends LitElement {
   }
 
   _callBridgeService(serviceName, index) {
-    this.hass.callService("mealie_grocy_bridge", serviceName, {
+    const payload = {
       recipe_index: index,
-    });
+    };
+
+    if (serviceName === "set_to_next_free_day") {
+      const scheduleOption = this._getScheduleOption(index);
+      if (scheduleOption.date) {
+        payload.selected_date = scheduleOption.date;
+      }
+      payload.entry_type = scheduleOption.entryType;
+    }
+
+    this.hass.callService("mealie_grocy_bridge", serviceName, payload);
   }
 
   _showPreviousPage = () => {
@@ -592,6 +692,38 @@ class MealieGrocyCard extends LitElement {
   _capitalize(value) {
     if (!value) return "";
     return value.charAt(0).toUpperCase() + value.slice(1);
+  }
+
+  _getScheduleOption(index) {
+    return this._scheduleOptions[index] || { date: "", entryType: "dinner" };
+  }
+
+  _updateScheduleDate(index, event) {
+    this._scheduleOptions = {
+      ...this._scheduleOptions,
+      [index]: {
+        ...this._getScheduleOption(index),
+        date: event.target.value || "",
+      },
+    };
+  }
+
+  _updateScheduleType(index, entryType) {
+    this._scheduleOptions = {
+      ...this._scheduleOptions,
+      [index]: {
+        ...this._getScheduleOption(index),
+        entryType,
+      },
+    };
+  }
+
+  _mealTypes() {
+    return [
+      { value: "breakfast", label: "Fruehstueck" },
+      { value: "lunch", label: "Mittagessen" },
+      { value: "dinner", label: "Abendessen" },
+    ];
   }
 
   _formatMealplanDate(entry) {
