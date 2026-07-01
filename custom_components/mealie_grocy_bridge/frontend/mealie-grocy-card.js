@@ -194,6 +194,32 @@ class MealieGrocyCard extends LitElement {
         overflow: hidden;
       }
 
+      .recipe-title-row,
+      .score-line,
+      .section-label,
+      .schedule-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .recipe-status-flag {
+        font-size: 1.2rem;
+        line-height: 1;
+      }
+
+      .score-line {
+        font-size: 1.02rem;
+        margin-bottom: 4px;
+      }
+
+      .section-icon,
+      .score-icon,
+      .schedule-icon {
+        color: var(--primary-color);
+        --mdc-icon-size: 18px;
+      }
+
       .content-zone {
         font-size: 0.85rem;
         display: flex;
@@ -207,13 +233,23 @@ class MealieGrocyCard extends LitElement {
         margin-bottom: 1px;
       }
 
+      .ingredient-list {
+        line-height: 1.6;
+      }
+
       .expired {
         color: #ff5252;
+        background: rgba(255, 82, 82, 0.12);
+        border-radius: 999px;
+        padding: 1px 8px;
         font-weight: bold;
       }
 
       .expiring {
         color: orange;
+        background: rgba(255, 165, 0, 0.14);
+        border-radius: 999px;
+        padding: 1px 8px;
         font-weight: bold;
       }
 
@@ -292,6 +328,15 @@ class MealieGrocyCard extends LitElement {
         border: none;
         color: inherit;
         cursor: pointer;
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+      }
+
+      .btn-shopping {
+        color: #00a4d8;
+      }
+
+      .btn-calendar {
+        color: #d99a49;
       }
 
       .recipe-link {
@@ -299,6 +344,9 @@ class MealieGrocyCard extends LitElement {
         text-decoration: none;
         font-size: 0.82rem;
         font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
       }
 
       .recipe-card.mini {
@@ -336,6 +384,12 @@ class MealieGrocyCard extends LitElement {
       .recipe-card.compact .btn {
         width: 28px;
         height: 28px;
+      }
+
+      .recipe-card.compact .section-icon,
+      .recipe-card.compact .score-icon,
+      .recipe-card.compact .schedule-icon {
+        --mdc-icon-size: 15px;
       }
 
       .recipe-card.list {
@@ -556,26 +610,40 @@ class MealieGrocyCard extends LitElement {
                 return html`
                   <div class="recipe-card ${mode}" data-list-text="${listText}">
                     <div class="title-zone">
-                      <h3>${recipe.recipeName} ${recipe.hasExpiring ? "!" : ""}</h3>
-                      <div>Score: <strong>${recipe.matchScore}%</strong></div>
+                      <div class="recipe-title-row">
+                        <ha-icon class="section-icon" icon="mdi:food"></ha-icon>
+                        <h3>${recipe.recipeName}</h3>
+                        ${recipe.hasExpiring ? html`<span class="recipe-status-flag" title="Mindestens eine vorhandene Zutat ist abgelaufen oder läuft bald ab">🔥</span>` : ""}
+                      </div>
+                      <div class="score-line">
+                        <ha-icon class="score-icon" icon="mdi:chart-bar"></ha-icon>
+                        <span>Score: <strong>${recipe.matchScore}%</strong></span>
+                      </div>
 
                       ${recipe.url ? html`
                         <a class="recipe-link" href="${recipe.url}" target="_blank" rel="noreferrer">
-                          Rezept offnen <ha-icon icon="mdi:open-in-new" style="--mdc-icon-size: 14px;"></ha-icon>
+                          <span>👉 Rezept öffnen</span>
+                          <ha-icon icon="mdi:open-in-new" style="--mdc-icon-size: 14px;"></ha-icon>
                         </a>
                       ` : ""}
                     </div>
 
                     <div class="content-zone">
                       <div class="ingredient-section">
-                        <span class="ingredient-label">Vorhanden:</span>
+                        <span class="ingredient-label section-label">
+                          <span>✅</span>
+                          <span>Vorhanden:</span>
+                        </span>
                         <div class="ingredient-list">
                           ${this._renderMatchingIngredients(recipe.matchingIngredients)}
                         </div>
                       </div>
 
                       <div class="ingredient-section">
-                        <span class="ingredient-label">Basics (ignoriert):</span>
+                        <span class="ingredient-label section-label">
+                          <span>🧂</span>
+                          <span>Basics (ignoriert):</span>
+                        </span>
                         <div class="ingredient-list">
                           ${recipe.basicIngredients && recipe.basicIngredients.length > 0
                             ? recipe.basicIngredients.map((i) => this._capitalize(i)).join(", ")
@@ -584,7 +652,10 @@ class MealieGrocyCard extends LitElement {
                       </div>
 
                       <div class="ingredient-section">
-                        <span class="ingredient-label">Einkaufen:</span>
+                        <span class="ingredient-label section-label">
+                          <span>🛒</span>
+                          <span>Einkaufen:</span>
+                        </span>
                         <div class="ingredient-list missing">
                           ${recipe.missingIngredients && recipe.missingIngredients.length > 0
                             ? recipe.missingIngredients.map((i) => this._capitalize(i.trim())).join(", ")
@@ -595,7 +666,10 @@ class MealieGrocyCard extends LitElement {
 
                     <div class="action-zone">
                       <div class="schedule-zone">
-                        <div class="ingredient-label">Datum wahlen:</div>
+                        <div class="ingredient-label schedule-label">
+                          <ha-icon class="schedule-icon" icon="mdi:calendar-month"></ha-icon>
+                          <span>Datum wählen:</span>
+                        </div>
                         <div class="schedule-controls">
                           <input
                             class="schedule-date"
@@ -610,6 +684,7 @@ class MealieGrocyCard extends LitElement {
                                 class="meal-type-btn ${this._getScheduleOption(recipe._globalIndex).entryType === mealType.value ? "active" : ""}"
                                 @click=${() => this._updateScheduleType(recipe._globalIndex, mealType.value)}
                               >
+                                <ha-icon icon="${mealType.icon}" style="--mdc-icon-size: 14px; margin-right: 4px;"></ha-icon>
                                 ${mealType.label}
                               </button>
                             `)}
@@ -618,10 +693,10 @@ class MealieGrocyCard extends LitElement {
                       </div>
 
                       <div class="action-buttons">
-                        <button type="button" class="btn" @click=${() => this._callBridgeService("add_missing_ingredients", recipe._globalIndex)}>
+                        <button type="button" class="btn btn-shopping" title="Zur Einkaufsliste hinzufügen" @click=${() => this._callBridgeService("add_missing_ingredients", recipe._globalIndex)}>
                           <ha-icon icon="mdi:cart-plus"></ha-icon>
                         </button>
-                        <button type="button" class="btn" @click=${() => this._callBridgeService("set_to_next_free_day", recipe._globalIndex)}>
+                        <button type="button" class="btn btn-calendar" title="Zum Speiseplan hinzufügen" @click=${() => this._callBridgeService("set_to_next_free_day", recipe._globalIndex)}>
                           <ha-icon icon="mdi:calendar-plus"></ha-icon>
                         </button>
                       </div>
@@ -651,7 +726,13 @@ class MealieGrocyCard extends LitElement {
                       </div>
                       <div class="mealplan-content">
                         ${entry.imageUrl ? html`
-                          <img class="mealplan-thumb" src="${entry.imageUrl}" alt="${entry.recipeName}">
+                          <img
+                            class="mealplan-thumb"
+                            src="${entry.imageUrl}"
+                            alt="${entry.recipeName}"
+                            loading="lazy"
+                            @error=${this._handleMealplanImageError}
+                          >
                         ` : ""}
                         <div class="mealplan-text">
                           <div class="mealplan-recipe-name">${entry.recipeName}</div>
@@ -781,9 +862,9 @@ class MealieGrocyCard extends LitElement {
 
   _mealTypes() {
     return [
-      { value: "breakfast", label: "Frühstück" },
-      { value: "lunch", label: "Mittagessen" },
-      { value: "dinner", label: "Abendessen" },
+      { value: "breakfast", label: "Frühstück", icon: "mdi:coffee" },
+      { value: "lunch", label: "Mittagessen", icon: "mdi:white-balance-sunny" },
+      { value: "dinner", label: "Abendessen", icon: "mdi:weather-night" },
     ];
   }
 
@@ -846,6 +927,13 @@ class MealieGrocyCard extends LitElement {
       </div>
     `;
   }
+
+  _handleMealplanImageError = (event) => {
+    const image = event?.target;
+    if (image) {
+      image.style.display = "none";
+    }
+  };
 }
 
 customElements.define("mealie-grocy-card", MealieGrocyCard);

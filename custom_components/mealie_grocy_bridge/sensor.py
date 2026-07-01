@@ -3,6 +3,7 @@ from datetime import timedelta, datetime
 import logging
 import re
 import asyncio
+from urllib.parse import quote
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -105,13 +106,26 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         return text_value
 
     @staticmethod
+    def _build_recipe_image_url(mealie_url, recipe_id, image_version=None):
+        """Build the official Mealie recipe thumbnail URL."""
+        recipe_id = str(recipe_id or "").strip()
+        if not recipe_id:
+            return None
+
+        version = str(image_version or "").strip()
+        return (
+            f"{mealie_url}/api/media/recipes/{quote(recipe_id, safe='')}/images/min-original.webp"
+            f"?rnd=1&version={quote(version, safe='')}"
+        )
+
+    @staticmethod
     def _extract_recipe_image(plan, mealie_url):
         """Extract a recipe image URL from a mealplan entry when available."""
         recipe_obj = plan.get("recipe")
         if not isinstance(recipe_obj, dict):
             return None
 
-        for key in ("image", "imageUrl", "recipeImage", "thumbnail"):
+        for key in ("imageUrl", "recipeImage", "thumbnail"):
             value = recipe_obj.get(key)
             if isinstance(value, str) and value.strip():
                 if value.startswith(("http://", "https://")):
@@ -127,7 +141,9 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                         return value.strip()
                     return f"{mealie_url}/{value.lstrip('/')}"
 
-        return None
+        recipe_id = recipe_obj.get("id") or plan.get("recipeId")
+        image_version = recipe_obj.get("image")
+        return MealieGrocyBridgeCoordinator._build_recipe_image_url(mealie_url, recipe_id, image_version)
 
     @classmethod
     def _extract_mealplan_recipe_meta(cls, plan, mealie_url):

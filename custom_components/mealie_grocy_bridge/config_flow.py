@@ -86,6 +86,7 @@ class MealieGrocyBridgeOptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialisiert den Options-Flow Handler."""
         super().__init__()
+        self.config_entry = config_entry
 
     async def async_step_init(self, user_input=None):
         """Verwaltet das Formular, wenn der Nutzer auf 'Konfigurieren' klickt."""
@@ -114,18 +115,23 @@ class MealieGrocyBridgeOptionsFlowHandler(config_entries.OptionsFlow):
         todo_options = {entity: entity for entity in todo_entities} if todo_entities else {}
 
         # Das Formular-Schema für das "Konfigurieren"-Menü aufbauen (vorausgefüllt mit aktuellen Werten)
-        OPTIONS_SCHEMA = vol.Schema(
-            {
-                vol.Required(CONF_MEALIE_URL, default=current_mealie_url): str,
-                vol.Required(CONF_MEALIE_TOKEN, default=current_mealie_token): str,
-                vol.Required(CONF_GROCY_URL, default=current_grocy_url): str,
-                vol.Required(CONF_GROCY_TOKEN, default=current_grocy_token): str,
-                vol.Optional(CONF_EXCLUDED_FOODS, default=current_exclusions): str,
-                vol.Optional(CONF_TODO_ENTITY, default=current_todo): vol.In(todo_options),
-                vol.Optional(CONF_DAILY_MEALPLAN_SYNC_ENABLED, default=current_daily_sync_enabled): bool,
-                vol.Optional(CONF_DAILY_MEALPLAN_SYNC_TIME, default=current_daily_sync_time): self.TIME_VALIDATOR,
-            }
-        )
+        schema_fields = {
+            vol.Required(CONF_MEALIE_URL, default=current_mealie_url): str,
+            vol.Required(CONF_MEALIE_TOKEN, default=current_mealie_token): str,
+            vol.Required(CONF_GROCY_URL, default=current_grocy_url): str,
+            vol.Required(CONF_GROCY_TOKEN, default=current_grocy_token): str,
+            vol.Optional(CONF_EXCLUDED_FOODS, default=current_exclusions): str,
+            vol.Optional(CONF_DAILY_MEALPLAN_SYNC_ENABLED, default=current_daily_sync_enabled): bool,
+            vol.Optional(CONF_DAILY_MEALPLAN_SYNC_TIME, default=current_daily_sync_time): self.TIME_VALIDATOR,
+        }
+
+        if todo_options:
+            todo_default = current_todo if current_todo in todo_options else next(iter(todo_options))
+            schema_fields[vol.Optional(CONF_TODO_ENTITY, default=todo_default)] = vol.In(todo_options)
+        else:
+            schema_fields[vol.Optional(CONF_TODO_ENTITY, default=current_todo)] = str
+
+        OPTIONS_SCHEMA = vol.Schema(schema_fields)
 
         # Formular mit den vorbelegten Werten anzeigen
         return self.async_show_form(step_id="init", data_schema=OPTIONS_SCHEMA)
