@@ -36,8 +36,15 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 - **Verbesserte Datenbasis für Automationen:**
   - Status kann nun auch für zukünftige Automationen genutzt werden (z. B. Benachrichtigungen oder Einkaufsempfehlungen)
 
-Ab Version 0.2.4
+Ab Version 0.2.5-beta.1
 <img width="511" height="757" alt="image" src="https://github.com/user-attachments/assets/f9dfaae3-9d62-4950-95e1-efe39bf625e4" />
+ 
+- **Aktueller Speiseplan in der Karte (NEU):**
+  - Optional direkt unterhalb der RezeptvorschlÃ¤ge sichtbar
+  - Zeigt die laufende Samstag-bis-Samstag-Woche aus Mealie
+- **BlÃ¤tterbare Rezeptseiten (NEU):**
+  - Wenn mehr Rezepte vorhanden sind als angezeigt werden sollen, kann durch die restlichen VorschlÃ¤ge geblÃ¤ttert werden
+  - Funktioniert auch in responsiven, schmalen Dashboard-Layouts
 vier verschiedene Darstellungsmöglichkeiten
 
 ---

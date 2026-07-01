@@ -50,6 +50,8 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         """Initialize the coordinator."""
         self.entry_id = entry_id
         self.session = async_get_clientsession(hass)
+        self.current_week_mealplan = []
+        self.current_week_range = {"start": None, "end": None}
         
         super().__init__(
             hass,
@@ -57,6 +59,38 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
             name=DOMAIN,
             update_interval=timedelta(minutes=30),
         )
+
+    @staticmethod
+    def _get_current_week_bounds(today):
+        """Return the current Saturday-based week bounds."""
+        days_since_saturday = (today.weekday() - 5) % 7
+        week_start = today - timedelta(days=days_since_saturday)
+        week_end = week_start + timedelta(days=7)
+        return week_start, week_end
+
+    @staticmethod
+    def _extract_mealplan_items(raw_data):
+        """Normalize mealplan API payloads to a list of items."""
+        if isinstance(raw_data, list):
+            return raw_data
+        if isinstance(raw_data, dict):
+            return raw_data.get("items", raw_data.get("data", []))
+        return []
+
+    @staticmethod
+    def _extract_recipe_name(plan):
+        """Extract a human-friendly recipe name from a mealplan entry."""
+        recipe_obj = plan.get("recipe")
+        if isinstance(recipe_obj, dict):
+            for key in ("name", "title"):
+                value = recipe_obj.get(key)
+                if value:
+                    return str(value).strip()
+        for key in ("title", "text", "note"):
+            value = plan.get(key)
+            if value:
+                return str(value).strip()
+        return "Unbekannt"
 
     async def _fetch_recipe_details(self, semaphore, slug, mealie_url, headers):
         """Fetch full details for a single recipe with concurrency limit and pacing."""
@@ -98,41 +132,71 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         # 2. MEALIE SPEISEPLAN ABRUFEN
         # =====================================================================
         today = dt_util.now().date()
-        end_date = today + timedelta(days=8)
-        mealplan_url = f"{mealie_url}/api/households/mealplans?startTime={today}&endTime={end_date}"
+        week_start, week_end = self._get_current_week_bounds(today)
+        mealplan_url = f"{mealie_url}/api/households/mealplans?startTime={week_start}&endTime={week_end}"
         
         planned_identifiers = set()
         invalid_keywords = {"none", "null", "string", ""}
+        weekly_mealplan = []
 
         try:
             async with self.session.get(mealplan_url, headers=mealie_headers, timeout=10) as res:
                 if res.status == 200:
                     raw_data = await res.json()
-                    items = []
-                    if isinstance(raw_data, list):
-                        items = raw_data
-                    elif isinstance(raw_data, dict):
-                        items = raw_data.get("items", raw_data.get("data", []))
+                    items = self._extract_mealplan_items(raw_data)
                     
                     if isinstance(items, list):
                         for plan in items:
                             if not isinstance(plan, dict):
                                 continue
-                            r_id = plan.get("recipeId")
-                            if r_id:
-                                s_id = str(r_id).strip().lower()
-                                if s_id not in invalid_keywords and len(s_id) > 5:
-                                    planned_identifiers.add(s_id)
-                            recipe_obj = plan.get("recipe")
-                            if isinstance(recipe_obj, dict):
-                                for key in ["id", "slug"]:
-                                    val = recipe_obj.get(key)
-                                    if val:
-                                        s_val = str(val).strip().lower()
-                                        if s_val not in invalid_keywords and len(s_val) > 2:
-                                            planned_identifiers.add(s_val)
+                            plan_date_raw = plan.get("date") or plan.get("startTime") or plan.get("startDate")
+                            if not plan_date_raw:
+                                continue
+
+                            try:
+                                plan_date = datetime.fromisoformat(
+                                    str(plan_date_raw).replace("Z", "+00:00")
+                                ).date()
+                            except ValueError:
+                                try:
+                                    plan_date = datetime.strptime(str(plan_date_raw)[:10], "%Y-%m-%d").date()
+                                except ValueError:
+                                    continue
+
+                            if plan_date >= today:
+                                r_id = plan.get("recipeId")
+                                if r_id:
+                                    s_id = str(r_id).strip().lower()
+                                    if s_id not in invalid_keywords and len(s_id) > 5:
+                                        planned_identifiers.add(s_id)
+                                recipe_obj = plan.get("recipe")
+                                if isinstance(recipe_obj, dict):
+                                    for key in ["id", "slug"]:
+                                        val = recipe_obj.get(key)
+                                        if val:
+                                            s_val = str(val).strip().lower()
+                                            if s_val not in invalid_keywords and len(s_val) > 2:
+                                                planned_identifiers.add(s_val)
+
+                            if not (week_start <= plan_date <= week_end):
+                                continue
+
+                            weekly_mealplan.append({
+                                "date": plan_date.isoformat(),
+                                "dateLabel": plan_date.strftime("%d.%m.%Y"),
+                                "weekday": plan_date.strftime("%A"),
+                                "entryType": str(plan.get("entryType", "meal")).strip(),
+                                "recipeName": self._extract_recipe_name(plan),
+                            })
         except Exception as err:
             _LOGGER.error("Fehler im Speiseplan-Filter: %s", err)
+
+        weekly_mealplan.sort(key=lambda item: (item["date"], item["entryType"], item["recipeName"]))
+        self.current_week_mealplan = weekly_mealplan
+        self.current_week_range = {
+            "start": week_start.isoformat(),
+            "end": week_end.isoformat(),
+        }
 
         # =====================================================================
         # 3. GROCY BESTAND ABRUFEN
@@ -413,4 +477,6 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
     def extra_state_attributes(self) -> dict:
         return {
             "recipes": self.coordinator.data if self.coordinator.data else [],
+            "current_week_mealplan": self.coordinator.current_week_mealplan,
+            "current_week_range": self.coordinator.current_week_range,
         }
