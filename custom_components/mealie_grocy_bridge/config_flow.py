@@ -87,16 +87,11 @@ class MealieGrocyBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry):
         """Verknüpft diesen Config-Flow mit dem unten stehenden Options-Flow (Konfigurieren-Button)."""
-        return MealieGrocyBridgeOptionsFlowHandler(config_entry)
+        return MealieGrocyBridgeOptionsFlowHandler()
 
 
 class MealieGrocyBridgeOptionsFlowHandler(config_entries.OptionsFlow):
     """Klasse zur Handhabung von nachträglichen Einstellungsänderungen."""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialisiert den Options-Flow Handler."""
-        super().__init__()
-        self.config_entry = config_entry
 
     async def async_step_init(self, user_input=None):
         """Verwaltet das Formular, wenn der Nutzer auf 'Konfigurieren' klickt."""
