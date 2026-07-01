@@ -40,9 +40,9 @@ Ab Version 0.2.5b11
 <img width="511" height="757" alt="image" src="https://github.com/user-attachments/assets/f9dfaae3-9d62-4950-95e1-efe39bf625e4" />
  
 - **Aktueller Speiseplan in der Karte (NEU):**
-  - Optional direkt unterhalb der RezeptvorschlÃ¤ge sichtbar
+  - Optional direkt unterhalb der Rezeptvorschläge sichtbar
   - Zeigt die laufende Samstag-bis-Samstag-Woche aus Mealie
-- **BlÃ¤tterbare Rezeptseiten (NEU):**
+- **Blätterbare Rezeptseiten (NEU):**
   - Wenn mehr Rezepte vorhanden sind als angezeigt werden sollen, kann durch die restlichen VorschlÃ¤ge geblÃ¤ttert werden
   - Funktioniert auch in responsiven, schmalen Dashboard-Layouts
 vier verschiedene Darstellungsmöglichkeiten
