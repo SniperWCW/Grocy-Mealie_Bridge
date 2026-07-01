@@ -92,6 +92,37 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                 return str(value).strip()
         return "Unbekannt"
 
+    @staticmethod
+    def _clean_basic_ingredient(text_low, fallback):
+        """Normalize basic ingredients by stripping amounts and units."""
+        cleaned_text = str(text_low or "").lower().replace("-", " ").strip()
+        cleaned_text = re.sub(r"\s+", " ", cleaned_text)
+
+        quantity_pattern = (
+            r"^\s*(?:"
+            r"\d+\s*/\s*\d+|"
+            r"\d+[.,]?\d*|"
+            r"[¼½¾⅓⅔⅛⅜⅝⅞]"
+            r")\s*"
+        )
+        unit_pattern = (
+            r"^\s*(?:tl|el|g|kg|mg|ml|cl|dl|l|liter|bund|stück|stueck|stck|"
+            r"zehe|zehen|prise|prisen|becher|dose|päckchen|paeckchen)\b\s*"
+        )
+
+        changed = True
+        while cleaned_text and changed:
+            previous = cleaned_text
+            cleaned_text = re.sub(quantity_pattern, "", cleaned_text, flags=re.IGNORECASE)
+            cleaned_text = re.sub(unit_pattern, "", cleaned_text, flags=re.IGNORECASE)
+            cleaned_text = cleaned_text.strip(" ,.")
+            changed = cleaned_text != previous
+
+        if not cleaned_text or len(cleaned_text) <= 2:
+            cleaned_text = fallback
+
+        return cleaned_text.strip().capitalize()
+
     async def _fetch_recipe_details(self, semaphore, slug, mealie_url, headers):
         """Fetch full details for a single recipe with concurrency limit and pacing."""
         async with semaphore:
@@ -319,6 +350,10 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                         break
 
                 if matched_basic:
+                    basic_ingredients_details.append(
+                        self._clean_basic_ingredient(text_low, matched_basic)
+                    )
+                    continue
                     # REINIGUNGS-LOGIK FÜR BASICS:
                     cleaned_text = re.sub(
                         r'^\s*[\d½⅓¼⅕⅙⅛.,\s]+\s*(tl|el|g|kg|ml|l|Liter|bund|stück|stck|zehe|zehen)?\s*',

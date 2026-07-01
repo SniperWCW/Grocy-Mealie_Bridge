@@ -720,7 +720,7 @@ class MealieGrocyCard extends LitElement {
 
   _mealTypes() {
     return [
-      { value: "breakfast", label: "Fruehstueck" },
+      { value: "breakfast", label: "Frühstück" },
       { value: "lunch", label: "Mittagessen" },
       { value: "dinner", label: "Abendessen" },
     ];
@@ -755,7 +755,7 @@ class MealieGrocyCard extends LitElement {
 
   _formatEntryType(entryType) {
     const mapping = {
-      breakfast: "Fruhstuck",
+      breakfast: "Frühstück",
       lunch: "Mittagessen",
       dinner: "Abendessen",
       side: "Beilage",
