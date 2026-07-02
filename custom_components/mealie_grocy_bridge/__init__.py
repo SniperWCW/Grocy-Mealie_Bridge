@@ -93,6 +93,25 @@ def _parse_mealplan_entry_date(plan: dict):
         return None
 
 
+def _recipe_matches_mealplan_entry(recipe_details: dict, recipe_id: str | None, recipe_slug: str | None) -> bool:
+    """Validate that fetched recipe details match the mealplan entry."""
+    if not isinstance(recipe_details, dict):
+        return False
+
+    fetched_id = str(recipe_details.get("id") or "").strip()
+    fetched_slug = str(recipe_details.get("slug") or "").strip()
+    expected_id = str(recipe_id or "").strip()
+    expected_slug = str(recipe_slug or "").strip()
+
+    if expected_id and fetched_id:
+        return fetched_id == expected_id
+
+    if expected_slug and fetched_slug:
+        return fetched_slug == expected_slug
+
+    return not expected_id and not expected_slug
+
+
 def _build_grocy_products_map(grocy_data, today):
     """Create a normalized lookup map for Grocy stock."""
     grocy_products_map = {}
@@ -302,23 +321,36 @@ async def _run_daily_mealplan_sync(hass: HomeAssistant, entry_id: str) -> None:
 
     for plan in todays_plans:
         recipe_obj = plan.get("recipe")
-        recipe_slug = recipe_obj.get("slug") if isinstance(recipe_obj, dict) else None
+        recipe_id = str(
+            plan.get("recipeId")
+            or (recipe_obj.get("id") if isinstance(recipe_obj, dict) else "")
+            or ""
+        ).strip() or None
+        recipe_slug = str(
+            (recipe_obj.get("slug") if isinstance(recipe_obj, dict) else "")
+            or ""
+        ).strip() or None
         recipe_name = (
             recipe_obj.get("name")
             if isinstance(recipe_obj, dict) and recipe_obj.get("name")
             else plan.get("title") or plan.get("text") or "Unbekanntes Rezept"
         )
         entry_type = str(plan.get("entryType", "")).strip().lower()
-        if not recipe_slug:
+        recipe_identifier = recipe_id or recipe_slug
+        if not recipe_identifier:
             _LOGGER.warning(
-                "Taeglicher Essensplan-Sync: Mealplan-Eintrag '%s' (%s) hat keinen Recipe-Slug und wird uebersprungen.",
+                "Taeglicher Essensplan-Sync: Mealplan-Eintrag '%s' (%s) hat weder Recipe-ID noch Slug und wird uebersprungen.",
                 recipe_name,
                 entry_type,
             )
             continue
 
         try:
-            async with session.get(f"{mealie_url}/api/recipes/{recipe_slug}", headers=mealie_headers, timeout=15) as response:
+            async with session.get(
+                f"{mealie_url}/api/recipes/{recipe_identifier}",
+                headers=mealie_headers,
+                timeout=15,
+            ) as response:
                 if response.status != 200:
                     _LOGGER.warning("Täglicher Essensplan-Sync: Rezept %s konnte nicht geladen werden (%s).", recipe_slug, response.status)
                     continue
@@ -327,13 +359,26 @@ async def _run_daily_mealplan_sync(hass: HomeAssistant, entry_id: str) -> None:
             _LOGGER.warning("Täglicher Essensplan-Sync: Fehler beim Laden von Rezept %s: %s", recipe_slug, err)
             continue
 
+        if not _recipe_matches_mealplan_entry(recipe_details, recipe_id, recipe_slug):
+            _LOGGER.warning(
+                "Taeglicher Essensplan-Sync: Rezept-Mismatch fuer '%s' (%s). Erwartet id=%s slug=%s, erhalten id=%s slug=%s. Eintrag wird uebersprungen.",
+                recipe_name,
+                entry_type,
+                recipe_id,
+                recipe_slug,
+                recipe_details.get("id"),
+                recipe_details.get("slug"),
+            )
+            continue
+
         recipe_missing_ingredients = _extract_missing_ingredients(
             recipe_details, grocy_products_map, basics_to_ignore
         )
         _LOGGER.info(
-            "Taeglicher Essensplan-Sync: verwende '%s' (%s, slug=%s) mit %s fehlenden Zutaten.",
+            "Taeglicher Essensplan-Sync: verwende '%s' (%s, id=%s, slug=%s) mit %s fehlenden Zutaten.",
             recipe_name,
             entry_type,
+            recipe_id,
             recipe_slug,
             len(recipe_missing_ingredients),
         )
