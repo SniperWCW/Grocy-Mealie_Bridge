@@ -12,10 +12,10 @@
           "mealplan_window_mode": "Speiseplan-Zeitraum",
           "mealplan_window_days": "Heute + X Tage (0-14)",
           "daily_mealplan_sync_enabled": "Essensplan-Sync aktivieren",
-          "daily_mealplan_sync_time": "Uhrzeit für Essensplan-Sync (HH:MM)",
+          "daily_mealplan_sync_time": "Uhrzeit fuer Essensplan-Sync (HH:MM)",
           "mealplan_sync_mode": "Sync-Modus",
-          "mealplan_sync_weekday": "Wochentag für Wochen-Sync",
-          "mealplan_sync_days_ahead": "Nächste Y Tage für Wochen-Sync (1-14)"
+          "mealplan_sync_weekday": "Wochentag fuer Wochen-Sync",
+          "mealplan_sync_days_ahead": "Naechste Y Tage fuer Wochen-Sync (1-14)"
         }
       }
     }

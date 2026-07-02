@@ -37,25 +37,25 @@ DEFAULT_EXCLUDED_FOODS = (
 )
 
 MEALPLAN_WINDOW_OPTIONS = {
-    MEALPLAN_WINDOW_CURRENT_WEEK: MEALPLAN_WINDOW_CURRENT_WEEK,
-    MEALPLAN_WINDOW_NEXT_WEEK: MEALPLAN_WINDOW_NEXT_WEEK,
-    MEALPLAN_WINDOW_CURRENT_AND_NEXT_WEEK: MEALPLAN_WINDOW_CURRENT_AND_NEXT_WEEK,
-    MEALPLAN_WINDOW_TODAY_PLUS_DAYS: MEALPLAN_WINDOW_TODAY_PLUS_DAYS,
+    MEALPLAN_WINDOW_CURRENT_WEEK: "Aktuelle Woche",
+    MEALPLAN_WINDOW_NEXT_WEEK: "Naechste Woche",
+    MEALPLAN_WINDOW_CURRENT_AND_NEXT_WEEK: "Aktuelle und naechste Woche",
+    MEALPLAN_WINDOW_TODAY_PLUS_DAYS: "Heute + X Tage",
 }
 
 SYNC_MODE_OPTIONS = {
-    MEALPLAN_SYNC_MODE_DAILY: MEALPLAN_SYNC_MODE_DAILY,
-    MEALPLAN_SYNC_MODE_WEEKLY: MEALPLAN_SYNC_MODE_WEEKLY,
+    MEALPLAN_SYNC_MODE_DAILY: "Taeglich fuer heute",
+    MEALPLAN_SYNC_MODE_WEEKLY: "Woechentlich fuer die naechsten Y Tage",
 }
 
 WEEKDAY_OPTIONS = {
-    "monday": "monday",
-    "tuesday": "tuesday",
-    "wednesday": "wednesday",
-    "thursday": "thursday",
-    "friday": "friday",
-    "saturday": "saturday",
-    "sunday": "sunday",
+    "monday": "Montag",
+    "tuesday": "Dienstag",
+    "wednesday": "Mittwoch",
+    "thursday": "Donnerstag",
+    "friday": "Freitag",
+    "saturday": "Samstag",
+    "sunday": "Sonntag",
 }
 
 
@@ -173,7 +173,7 @@ class MealieGrocyBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors = _validate_user_input(user_input)
             if not errors:
                 return self.async_create_entry(
-                    title="Mealie Grocy Bridge",
+                    title="Mealie-Grocy Bridge",
                     data=user_input,
                 )
 
