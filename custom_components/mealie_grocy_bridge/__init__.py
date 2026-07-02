@@ -69,6 +69,30 @@ def _coerce_time_value(value) -> tuple[int, int]:
     return int(parts[0]), int(parts[1])
 
 
+def _parse_mealplan_entry_date(plan: dict):
+    """Extract the calendar date from a mealplan entry."""
+    if not isinstance(plan, dict):
+        return None
+
+    raw_value = plan.get("date") or plan.get("startTime") or plan.get("startDate")
+    if not raw_value:
+        return None
+
+    text_value = str(raw_value).strip()
+    if not text_value:
+        return None
+
+    try:
+        return datetime.fromisoformat(text_value.replace("Z", "+00:00")).date()
+    except ValueError:
+        pass
+
+    try:
+        return datetime.strptime(text_value[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
 def _build_grocy_products_map(grocy_data, today):
     """Create a normalized lookup map for Grocy stock."""
     grocy_products_map = {}
@@ -235,15 +259,33 @@ async def _run_daily_mealplan_sync(hass: HomeAssistant, entry_id: str) -> None:
         return
 
     items = mealplan_data.get("items", mealplan_data) if isinstance(mealplan_data, dict) else mealplan_data
-    todays_plans = [
-        plan for plan in (items or [])
-        if isinstance(plan, dict)
-        and str(plan.get("entryType", "")).strip().lower() in {"lunch", "dinner"}
-    ]
+    todays_plans = []
+    skipped_plans = 0
+    for plan in (items or []):
+        if not isinstance(plan, dict):
+            continue
+
+        entry_type = str(plan.get("entryType", "")).strip().lower()
+        plan_date = _parse_mealplan_entry_date(plan)
+
+        if entry_type not in {"lunch", "dinner"}:
+            continue
+        if plan_date != today:
+            skipped_plans += 1
+            continue
+
+        todays_plans.append(plan)
 
     if not todays_plans:
         _LOGGER.info("Täglicher Essensplan-Sync: kein Mittag- oder Abendessen für %s gefunden.", today_str)
         return
+
+    _LOGGER.info(
+        "Taeglicher Essensplan-Sync: %s passende Essensplan-Eintraege fuer %s gefunden (%s weitere Lunch/Dinner-Eintraege mit anderem Datum ignoriert).",
+        len(todays_plans),
+        today_str,
+        skipped_plans,
+    )
 
     try:
         async with session.get(f"{grocy_url}/api/stock", headers=grocy_headers, timeout=15) as response:
@@ -261,7 +303,18 @@ async def _run_daily_mealplan_sync(hass: HomeAssistant, entry_id: str) -> None:
     for plan in todays_plans:
         recipe_obj = plan.get("recipe")
         recipe_slug = recipe_obj.get("slug") if isinstance(recipe_obj, dict) else None
+        recipe_name = (
+            recipe_obj.get("name")
+            if isinstance(recipe_obj, dict) and recipe_obj.get("name")
+            else plan.get("title") or plan.get("text") or "Unbekanntes Rezept"
+        )
+        entry_type = str(plan.get("entryType", "")).strip().lower()
         if not recipe_slug:
+            _LOGGER.warning(
+                "Taeglicher Essensplan-Sync: Mealplan-Eintrag '%s' (%s) hat keinen Recipe-Slug und wird uebersprungen.",
+                recipe_name,
+                entry_type,
+            )
             continue
 
         try:
@@ -274,9 +327,17 @@ async def _run_daily_mealplan_sync(hass: HomeAssistant, entry_id: str) -> None:
             _LOGGER.warning("Täglicher Essensplan-Sync: Fehler beim Laden von Rezept %s: %s", recipe_slug, err)
             continue
 
-        missing_ingredients.extend(
-            _extract_missing_ingredients(recipe_details, grocy_products_map, basics_to_ignore)
+        recipe_missing_ingredients = _extract_missing_ingredients(
+            recipe_details, grocy_products_map, basics_to_ignore
         )
+        _LOGGER.info(
+            "Taeglicher Essensplan-Sync: verwende '%s' (%s, slug=%s) mit %s fehlenden Zutaten.",
+            recipe_name,
+            entry_type,
+            recipe_slug,
+            len(recipe_missing_ingredients),
+        )
+        missing_ingredients.extend(recipe_missing_ingredients)
 
     if not missing_ingredients:
         _LOGGER.info("Täglicher Essensplan-Sync: keine fehlenden Zutaten für %s gefunden.", today_str)
