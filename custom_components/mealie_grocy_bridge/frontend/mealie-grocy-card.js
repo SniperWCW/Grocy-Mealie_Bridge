@@ -468,6 +468,11 @@ class MealieGrocyCard extends LitElement {
         grid-template-columns: 72px minmax(0, 1fr);
         gap: 12px;
         align-items: center;
+        min-width: 0;
+      }
+
+      .mealplan-content.no-thumb {
+        grid-template-columns: minmax(0, 1fr);
       }
 
       .mealplan-thumb {
@@ -488,6 +493,7 @@ class MealieGrocyCard extends LitElement {
       .mealplan-recipe-name {
         font-weight: 600;
         line-height: 1.25;
+        overflow-wrap: anywhere;
       }
 
       .mealplan-times {
@@ -537,6 +543,10 @@ class MealieGrocyCard extends LitElement {
 
         .mealplan-content {
           grid-template-columns: 56px minmax(0, 1fr);
+        }
+
+        .mealplan-content.no-thumb {
+          grid-template-columns: minmax(0, 1fr);
         }
 
         .mealplan-thumb {
@@ -724,11 +734,12 @@ class MealieGrocyCard extends LitElement {
                         <div class="mealplan-day">${this._formatMealplanDate(entry)}</div>
                         <div class="mealplan-entry-type">${this._formatEntryType(entry.entryType)}</div>
                       </div>
-                      <div class="mealplan-content">
+                      <div class="mealplan-content ${entry.imageUrl ? "" : "no-thumb"}">
                         ${entry.imageUrl ? html`
                           <img
                             class="mealplan-thumb"
                             src="${entry.imageUrl}"
+                            data-fallback-src="${entry.imageFallbackUrl || ""}"
                             alt="${entry.recipeName}"
                             loading="lazy"
                             @error=${this._handleMealplanImageError}
@@ -931,6 +942,12 @@ class MealieGrocyCard extends LitElement {
   _handleMealplanImageError = (event) => {
     const image = event?.target;
     if (image) {
+      const fallbackSrc = image.dataset?.fallbackSrc;
+      if (fallbackSrc && image.src !== fallbackSrc) {
+        image.src = fallbackSrc;
+        image.dataset.fallbackSrc = "";
+        return;
+      }
       image.style.display = "none";
     }
   };

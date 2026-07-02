@@ -106,15 +106,15 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         return text_value
 
     @staticmethod
-    def _build_recipe_image_url(mealie_url, recipe_id, image_version=None):
-        """Build the official Mealie recipe thumbnail URL."""
+    def _build_recipe_image_url(mealie_url, recipe_id, image_version=None, image_type="min-original.webp"):
+        """Build an official Mealie recipe image URL."""
         recipe_id = str(recipe_id or "").strip()
         if not recipe_id:
             return None
 
         version = str(image_version or "").strip()
         return (
-            f"{mealie_url}/api/media/recipes/{quote(recipe_id, safe='')}/images/min-original.webp"
+            f"{mealie_url}/api/media/recipes/{quote(recipe_id, safe='')}/images/{image_type}"
             f"?rnd=1&version={quote(version, safe='')}"
         )
 
@@ -151,6 +151,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         recipe_obj = plan.get("recipe")
         recipe_meta = {
             "imageUrl": cls._extract_recipe_image(plan, mealie_url),
+            "imageFallbackUrl": None,
             "prepTime": None,
             "cookTime": None,
             "totalTime": None,
@@ -158,6 +159,16 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
 
         if not isinstance(recipe_obj, dict):
             return recipe_meta
+
+        recipe_id = recipe_obj.get("id") or plan.get("recipeId")
+        image_version = recipe_obj.get("image")
+        if not recipe_meta["imageUrl"]:
+            recipe_meta["imageUrl"] = cls._build_recipe_image_url(
+                mealie_url, recipe_id, image_version, "min-original.webp"
+            )
+        recipe_meta["imageFallbackUrl"] = cls._build_recipe_image_url(
+            mealie_url, recipe_id, image_version, "original.webp"
+        )
 
         recipe_meta["prepTime"] = cls._normalize_duration(
             recipe_obj.get("prepTime") or recipe_obj.get("prepTimeMinutes")
@@ -302,6 +313,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                                 "entryType": str(plan.get("entryType", "meal")).strip(),
                                 "recipeName": self._extract_recipe_name(plan),
                                 "imageUrl": recipe_meta["imageUrl"],
+                                "imageFallbackUrl": recipe_meta["imageFallbackUrl"],
                                 "prepTime": recipe_meta["prepTime"],
                                 "cookTime": recipe_meta["cookTime"],
                                 "totalTime": recipe_meta["totalTime"],
