@@ -583,8 +583,8 @@ class MealieGrocyCard extends LitElement {
 
     const mode = this.config.display_mode || "default";
     const showCurrentWeekMealplan = this.config.show_current_week_mealplan !== false;
-    const currentWeekMealplan = stateObj.attributes.current_week_mealplan || [];
-    const currentWeekRange = stateObj.attributes.current_week_range || {};
+    const currentWeekMealplan = stateObj.attributes.mealplan || stateObj.attributes.current_week_mealplan || [];
+    const currentWeekRange = stateObj.attributes.mealplan_range || stateObj.attributes.current_week_range || {};
 
     let calculatedColumns = this.config.recipes_per_row;
     if (!calculatedColumns) {
@@ -721,7 +721,7 @@ class MealieGrocyCard extends LitElement {
             <div class="mealplan-section">
               <div class="mealplan-header">
                 <div>
-                  <h3>Aktueller Speiseplan</h3>
+                  <h3>Speiseplan</h3>
                   <div class="mealplan-range">${this._formatWeekRange(currentWeekRange)}</div>
                 </div>
               </div>
@@ -754,7 +754,7 @@ class MealieGrocyCard extends LitElement {
                   `)}
                 </div>
               ` : html`
-                <div class="mealplan-empty">Fur diese Samstag-bis-Samstag-Woche sind aktuell keine Eintrage vorhanden.</div>
+                <div class="mealplan-empty">Fur den gewahlten Zeitraum sind aktuell keine Eintrage vorhanden.</div>
               `}
             </div>
           ` : ""}
@@ -894,7 +894,7 @@ class MealieGrocyCard extends LitElement {
 
   _formatWeekRange(range) {
     if (!range?.start || !range?.end) {
-      return "Samstag bis Samstag";
+      return "Kein Zeitraum";
     }
     const start = new Date(`${range.start}T12:00:00`);
     const end = new Date(`${range.end}T12:00:00`);
@@ -903,7 +903,8 @@ class MealieGrocyCard extends LitElement {
       month: "2-digit",
       year: "numeric",
     });
-    return `${formatter.format(start)} bis ${formatter.format(end)}`;
+    const label = range?.label ? `${range.label}: ` : "";
+    return `${label}${formatter.format(start)} bis ${formatter.format(end)}`;
   }
 
   _formatEntryType(entryType) {

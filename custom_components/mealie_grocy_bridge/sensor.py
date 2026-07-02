@@ -19,6 +19,12 @@ from .const import (
     CONF_MEALIE_TOKEN,
     CONF_GROCY_URL,
     CONF_GROCY_TOKEN,
+    CONF_MEALPLAN_WINDOW_DAYS,
+    CONF_MEALPLAN_WINDOW_MODE,
+    MEALPLAN_WINDOW_CURRENT_AND_NEXT_WEEK,
+    MEALPLAN_WINDOW_CURRENT_WEEK,
+    MEALPLAN_WINDOW_NEXT_WEEK,
+    MEALPLAN_WINDOW_TODAY_PLUS_DAYS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -51,8 +57,8 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         """Initialize the coordinator."""
         self.entry_id = entry_id
         self.session = async_get_clientsession(hass)
-        self.current_week_mealplan = []
-        self.current_week_range = {"start": None, "end": None}
+        self.mealplan = []
+        self.mealplan_range = {"start": None, "end": None, "mode": None, "label": None}
         
         super().__init__(
             hass,
@@ -68,6 +74,36 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         week_start = today - timedelta(days=days_since_saturday)
         week_end = week_start + timedelta(days=7)
         return week_start, week_end
+
+    @classmethod
+    def _resolve_mealplan_window(cls, today, config_entry_data):
+        """Resolve the configured meal plan window and display label."""
+        mode = config_entry_data.get(CONF_MEALPLAN_WINDOW_MODE, MEALPLAN_WINDOW_CURRENT_WEEK)
+        current_week_start, current_week_end = cls._get_current_week_bounds(today)
+
+        if mode == MEALPLAN_WINDOW_NEXT_WEEK:
+            start = current_week_end
+            end = start + timedelta(days=7)
+            label = "Naechste Woche"
+        elif mode == MEALPLAN_WINDOW_CURRENT_AND_NEXT_WEEK:
+            start = current_week_start
+            end = current_week_end + timedelta(days=7)
+            label = "Aktuelle und naechste Woche"
+        elif mode == MEALPLAN_WINDOW_TODAY_PLUS_DAYS:
+            try:
+                days = int(config_entry_data.get(CONF_MEALPLAN_WINDOW_DAYS, 7))
+            except (TypeError, ValueError):
+                days = 7
+            days = max(0, min(days, 14))
+            start = today
+            end = today + timedelta(days=days)
+            label = f"Heute + {days} Tage"
+        else:
+            start = current_week_start
+            end = current_week_end
+            label = "Aktuelle Woche"
+
+        return start, end, mode, label
 
     @staticmethod
     def _extract_mealplan_items(raw_data):
@@ -255,12 +291,17 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         # 2. MEALIE SPEISEPLAN ABRUFEN
         # =====================================================================
         today = dt_util.now().date()
-        week_start, week_end = self._get_current_week_bounds(today)
-        mealplan_url = f"{mealie_url}/api/households/mealplans?startTime={week_start}&endTime={week_end}"
+        mealplan_start, mealplan_end, mealplan_mode, mealplan_label = self._resolve_mealplan_window(
+            today, config_entry_data
+        )
+        mealplan_url = (
+            f"{mealie_url}/api/households/mealplans"
+            f"?startTime={mealplan_start}&endTime={mealplan_end}&perPage=-1"
+        )
         
         planned_identifiers = set()
         invalid_keywords = {"none", "null", "string", ""}
-        weekly_mealplan = []
+        selected_mealplan = []
 
         try:
             async with self.session.get(mealplan_url, headers=mealie_headers, timeout=10) as res:
@@ -301,12 +342,12 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                                             if s_val not in invalid_keywords and len(s_val) > 2:
                                                 planned_identifiers.add(s_val)
 
-                            if not (week_start <= plan_date <= week_end):
+                            if not (mealplan_start <= plan_date <= mealplan_end):
                                 continue
 
                             recipe_meta = self._extract_mealplan_recipe_meta(plan, mealie_url)
 
-                            weekly_mealplan.append({
+                            selected_mealplan.append({
                                 "date": plan_date.isoformat(),
                                 "dateLabel": plan_date.strftime("%d.%m.%Y"),
                                 "weekday": plan_date.strftime("%A"),
@@ -321,11 +362,13 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         except Exception as err:
             _LOGGER.error("Fehler im Speiseplan-Filter: %s", err)
 
-        weekly_mealplan.sort(key=lambda item: (item["date"], item["entryType"], item["recipeName"]))
-        self.current_week_mealplan = weekly_mealplan
-        self.current_week_range = {
-            "start": week_start.isoformat(),
-            "end": week_end.isoformat(),
+        selected_mealplan.sort(key=lambda item: (item["date"], item["entryType"], item["recipeName"]))
+        self.mealplan = selected_mealplan
+        self.mealplan_range = {
+            "start": mealplan_start.isoformat(),
+            "end": mealplan_end.isoformat(),
+            "mode": mealplan_mode,
+            "label": mealplan_label,
         }
 
         # =====================================================================
@@ -611,6 +654,8 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
     def extra_state_attributes(self) -> dict:
         return {
             "recipes": self.coordinator.data if self.coordinator.data else [],
-            "current_week_mealplan": self.coordinator.current_week_mealplan,
-            "current_week_range": self.coordinator.current_week_range,
+            "mealplan": self.coordinator.mealplan,
+            "mealplan_range": self.coordinator.mealplan_range,
+            "current_week_mealplan": self.coordinator.mealplan,
+            "current_week_range": self.coordinator.mealplan_range,
         }

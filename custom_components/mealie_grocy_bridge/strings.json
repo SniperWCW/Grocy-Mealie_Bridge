@@ -1,6 +1,8 @@
 {
   "error": {
-    "invalid_time": "Bitte eine Uhrzeit im Format HH:MM eingeben."
+    "invalid_time": "Bitte eine Uhrzeit im Format HH:MM eingeben.",
+    "invalid_days_range": "Bitte einen Wert zwischen 0 und 14 Tagen eingeben.",
+    "invalid_days_ahead": "Bitte einen Wert zwischen 1 und 14 Tagen eingeben."
   },
   "config": {
     "step": {
@@ -13,8 +15,13 @@
           "grocy_url": "Grocy URL (z.B. http://xx.xx.xx.xx:9283)",
           "grocy_token": "Grocy API Key",
           "todo_entity": "To-do-Liste",
-          "daily_mealplan_sync_enabled": "Täglichen Essensplan-Sync aktivieren",
-          "daily_mealplan_sync_time": "Uhrzeit für täglichen Essensplan-Sync (HH:MM)"
+          "mealplan_window_mode": "Speiseplan-Zeitraum",
+          "mealplan_window_days": "Heute + X Tage (0-14)",
+          "daily_mealplan_sync_enabled": "Essensplan-Sync aktivieren",
+          "daily_mealplan_sync_time": "Uhrzeit für Essensplan-Sync (HH:MM)",
+          "mealplan_sync_mode": "Sync-Modus",
+          "mealplan_sync_weekday": "Wochentag für Wochen-Sync",
+          "mealplan_sync_days_ahead": "Nächste Y Tage für Wochen-Sync (1-14)"
         }
       }
     }
