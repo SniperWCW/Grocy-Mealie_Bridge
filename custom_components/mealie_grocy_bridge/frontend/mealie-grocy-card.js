@@ -1051,6 +1051,48 @@ const EMERGENCY_CATEGORIES = [
   },
 ];
 
+const EMERGENCY_UNITLESS_ESTIMATES = {
+  grain: [
+    { pattern: /\b(mehl)\b/, grams: 1000 },
+    { pattern: /\b(reis|linsen|graupen|grie|hafer|muesli|musli)\b/, grams: 500 },
+    { pattern: /\b(nudel|spaghetti|fusilli|farfalle|penne|rigate|tortiglioni|lasagneplatten|spatzle|spaetzle|gnocchi)\b/, grams: 500 },
+    { pattern: /\b(kartoffelpuree|kartoffelbrei)\b/, grams: 250 },
+    { pattern: /\b(brot|toast|laugenstangen|chapathi|chapati|durum|dürüm|wrap|taco)\b/, grams: 250 },
+  ],
+  vegetables: [
+    { pattern: /\b(passierte tomaten|tomaten gehackt|tomatensosse|tomatensoße|tomatenmark|paprikamark)\b/, grams: 400 },
+    { pattern: /\b(erbse|mohren|möhren|mais|bohn|kichererb|linsen|sauerkraut|rotkraut|spinat|blumenkohl|gemuse|gemuese|brokk|kohlrabi|suppen)\b/, grams: 400 },
+  ],
+  fruit: [
+    { pattern: /\b(apfelmus)\b/, grams: 360 },
+    { pattern: /\b(mandarin|orange|pfirs|aprik|ananas|sauerkirsch)\b/, grams: 300 },
+    { pattern: /\b(nuss|erdnuss|pekannuss|pistaz)\b/, grams: 200 },
+  ],
+  milk: [
+    { pattern: /\b(milch)\b/, grams: 1000 },
+    { pattern: /\b(sahne|schlagsahne)\b/, grams: 200 },
+    { pattern: /\b(kondensmilch)\b/, grams: 170 },
+    { pattern: /\b(kaese|käse|schmelzkase|schmelzkäse)\b/, grams: 200 },
+  ],
+  protein: [
+    { pattern: /\b(thunfisch|fischfilet|fischstabchen|fischstäbchen|corned beef)\b/, grams: 200 },
+    { pattern: /\b(wurst|würstchen|bratwurst|nurnberger|nürnberger|schinken|hack|gulasch|huhn|hahnchen|hähnchen|chicken|pute|rind|garnelen|prawns)\b/, grams: 250 },
+    { pattern: /\b(ei|eier)\b/, grams: 53 },
+    { pattern: /\b(tofu|tempeh|protein chunks)\b/, grams: 200 },
+  ],
+  fats: [
+    { pattern: /\b(olivenol|olivenöl|sonnenblumenol|sonnenblumenöl|rapsol|rapsöl|erdnusspaste|erdnussbutter)\b/, grams: 500 },
+    { pattern: /\b(butter|margarine)\b/, grams: 250 },
+  ],
+  drinks: [
+    { pattern: /\b(wasser)\b/, liters: 1.5 },
+    { pattern: /\b(milch)\b/, liters: 1 },
+    { pattern: /\b(sahne)\b/, liters: 0.2 },
+    { pattern: /\b(kondensmilch)\b/, liters: 0.17 },
+    { pattern: /\b(saft|cola|limonade|schorle|getrank|getraenk)\b/, liters: 1 },
+  ],
+};
+
 class MealieGrocyEmergencyCardEditor extends LitElement {
   static get properties() {
     return {
@@ -1481,6 +1523,12 @@ class MealieGrocyEmergencyCard extends LitElement {
                       : html`Aktuell wurde kein passendes Produkt aus Grocy erkannt.`}
                   </div>
 
+                  ${category.usesEstimatedAmounts ? html`
+                    <div class="meta">
+                      Artikel ohne Grocy-Einheit werden aktuell mit typischen Packungsgroessen geschaetzt.
+                    </div>
+                  ` : ""}
+
                   <div class="chip-row">
                     ${category.alternatives.map((item) => html`<span class="chip">${item}</span>`)}
                   </div>
@@ -1539,6 +1587,7 @@ class MealieGrocyEmergencyCard extends LitElement {
         actualAmount,
         targetAmount,
         daysCoverage,
+        usesEstimatedAmounts: matchedItems.some((item) => this._usesEstimatedAmount(item, category)),
         progressPercent,
         scoreLabel: `${Math.round(scorePercent)}%`,
         tone,
@@ -1631,7 +1680,7 @@ class MealieGrocyEmergencyCard extends LitElement {
       if (unit === "ml") return amount / 1000;
       if (unit === "cl") return amount / 100;
       if (unit === "dl") return amount / 10;
-      return 0;
+      return this._estimateUnitlessAmount(item, category);
     }
 
     if (unit === "kg") return amount * 1000;
@@ -1641,8 +1690,11 @@ class MealieGrocyEmergencyCard extends LitElement {
     if (unit === "cl") return amount * 10 * this._densityFor(item.name);
     if (unit === "dl") return amount * 100 * this._densityFor(item.name);
     if (unit === "l") return amount * 1000 * this._densityFor(item.name);
-    if (unit === "piece") return amount * this._pieceWeightFor(item.name, category.id);
-    return 0;
+    if (unit === "piece") {
+      const pieceWeight = this._pieceWeightFor(item.name, category.id);
+      if (pieceWeight > 0) return amount * pieceWeight;
+    }
+    return this._estimateUnitlessAmount(item, category);
   }
 
   _densityFor(name) {
@@ -1655,6 +1707,40 @@ class MealieGrocyEmergencyCard extends LitElement {
     const normalized = this._normalizeText(name);
     if (categoryId === "protein" && (/\bei\b/.test(normalized) || /\beier\b/.test(normalized))) return 53;
     return 0;
+  }
+
+  _estimateUnitlessAmount(item, category) {
+    const amount = Number(item.amount) || 0;
+    if (amount <= 0) return 0;
+
+    const normalizedName = this._normalizeText(item.name);
+    const estimates = EMERGENCY_UNITLESS_ESTIMATES[category.id] || [];
+
+    for (const estimate of estimates) {
+      if (!estimate.pattern.test(normalizedName)) continue;
+      if (category.measurement === "liters" && estimate.liters) return amount * estimate.liters;
+      if (category.measurement === "grams" && estimate.grams) return amount * estimate.grams;
+    }
+
+    if (category.measurement === "liters") return 0;
+
+    const fallbackByCategory = {
+      grain: 500,
+      vegetables: 400,
+      fruit: 250,
+      milk: 250,
+      protein: 250,
+      fats: 500,
+    };
+
+    return amount * (fallbackByCategory[category.id] || 0);
+  }
+
+  _usesEstimatedAmount(item, category) {
+    const unit = this._normalizeUnit(item.unit);
+    if (!unit) return this._estimateUnitlessAmount(item, category) > 0;
+    if (unit === "piece") return this._pieceWeightFor(item.name, category.id) <= 0;
+    return false;
   }
 
   _formatMeasuredAmount(amount, measurement) {
