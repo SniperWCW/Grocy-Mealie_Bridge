@@ -1293,6 +1293,13 @@ class MealieGrocyEmergencyCard extends LitElement {
         font-size: 0.86rem;
       }
 
+      .hero-stat-warning {
+        margin-top: 8px;
+        color: #ffb3b3;
+        font-size: 0.8rem;
+        line-height: 1.35;
+      }
+
       .category-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
@@ -1383,6 +1390,11 @@ class MealieGrocyEmergencyCard extends LitElement {
         line-height: 1.4;
       }
 
+      .meta.alert {
+        color: #ffb3b3;
+        font-weight: 600;
+      }
+
       .chip-row {
         justify-content: flex-start;
         flex-wrap: wrap;
@@ -1410,6 +1422,12 @@ class MealieGrocyEmergencyCard extends LitElement {
 
       .footer-note a {
         color: #d6ebb4;
+      }
+
+      .card-version {
+        margin-top: 6px;
+        color: rgba(243, 241, 232, 0.5);
+        font-size: 0.74rem;
       }
 
       @media (max-width: 700px) {
@@ -1456,7 +1474,8 @@ class MealieGrocyEmergencyCard extends LitElement {
     const collapsible = this.config.collapsible !== false;
     const stockItems = stateObj.attributes.stock_items || [];
     const summary = this._buildSummary(stockItems, adults, children, days);
-    const overallDaysLabel = this._formatCoverageLabel(summary.overallDaysCoverage);
+    const integrationVersion = stateObj.attributes.integration_version || "unbekannt";
+    const overallCoverage = this._formatOverallCoverage(summary.overallScorePercent, summary.overallDaysCoverage);
 
     return html`
       <ha-card>
@@ -1485,8 +1504,13 @@ class MealieGrocyEmergencyCard extends LitElement {
             <div class="hero-stats">
               <div class="hero-stat">
                 <span class="hero-stat-label">Vollständig abgedeckt</span>
-                <div class="hero-stat-value">${overallDaysLabel}</div>
-                <div class="hero-stat-sub">begrenzt durch die knappste Kategorie</div>
+                <div class="hero-stat-value">${overallCoverage.label}</div>
+                <div class="hero-stat-sub">${overallCoverage.detail}</div>
+                ${summary.zeroCategories.length > 0 ? html`
+                  <div class="hero-stat-warning">
+                    Kein Vorrat erkannt bei: ${summary.zeroCategories.map((category) => category.title).join(", ")}
+                  </div>
+                ` : ""}
               </div>
               <div class="hero-stat">
                 <span class="hero-stat-label">Gruppen im Ziel</span>
@@ -1524,6 +1548,10 @@ class MealieGrocyEmergencyCard extends LitElement {
                       : html`Aktuell wurde kein passendes Produkt aus Grocy erkannt.`}
                   </div>
 
+                  ${category.scorePercent === 0 ? html`
+                    <div class="meta alert">${category.title}: 0% - aktuell nicht abgedeckt.</div>
+                  ` : ""}
+
                   ${category.usesEstimatedAmounts ? html`
                     <div class="meta">
                       Artikel ohne Grocy-Einheit werden aktuell mit typischen Packungsgrößen geschätzt.
@@ -1545,6 +1573,7 @@ class MealieGrocyEmergencyCard extends LitElement {
               Quelle der Richtwerte: Bundeszentrum für Ernährung / BLE.
               Der offizielle Kalkulator auf ${this._renderLink(EMERGENCY_SOURCE_URL)} nutzt Personen gesamt und Tage,
               die getrennte Erwachsenen-/Kinderlogik wird hier lokal aus den BLE-Mengen abgeleitet.
+              <div class="card-version">Karten-/Integrationsversion: ${integrationVersion}</div>
             </div>
           `}
         </div>
@@ -1591,6 +1620,7 @@ class MealieGrocyEmergencyCard extends LitElement {
         daysCoverage,
         usesEstimatedAmounts: matchedItems.some((entry) => this._usesEstimatedAmount(entry.item, category)),
         progressPercent,
+        scorePercent,
         scoreLabel: `${Math.round(scorePercent)}%`,
         tone,
         daysLabel: this._formatDays(daysCoverage),
@@ -1608,7 +1638,9 @@ class MealieGrocyEmergencyCard extends LitElement {
       categories,
       categoriesAtTarget: categories.filter((category) => category.actualAmount >= category.targetAmount).length,
       overallDaysCoverage: lowestCategory?.daysCoverage || 0,
+      overallScorePercent: lowestCategory?.scorePercent || 0,
       lowestCategory: lowestCategory || categories[0],
+      zeroCategories: categories.filter((category) => category.scorePercent === 0),
     };
   }
 
@@ -1794,6 +1826,27 @@ class MealieGrocyEmergencyCard extends LitElement {
     if (value < 1) return "< 1 Tag";
     if (value >= 10) return `${Math.floor(value)} Tage`;
     return `${value.toFixed(1)} Tage`;
+  }
+
+  _formatPercent(value) {
+    if (!Number.isFinite(value) || value <= 0) return "0%";
+    return `${Math.round(value)}%`;
+  }
+
+  _formatOverallCoverage(scorePercent, daysCoverage) {
+    const percentLabel = this._formatPercent(scorePercent);
+    const dayLabel = this._formatCoverageLabel(daysCoverage);
+    if (!Number.isFinite(scorePercent) || scorePercent <= 0 || !Number.isFinite(daysCoverage) || daysCoverage <= 0) {
+      return {
+        label: "Nicht abgedeckt",
+        detail: `${percentLabel} / ${dayLabel}`,
+      };
+    }
+
+    return {
+      label: percentLabel,
+      detail: `${dayLabel} Vorrat, begrenzt durch die knappste Kategorie`,
+    };
   }
 }
 

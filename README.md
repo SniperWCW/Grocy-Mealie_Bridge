@@ -24,6 +24,10 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 
 ## ✨ Neu 
 
+- **Ab Version 0.2.6-beta.9**
+  - Notvorratskarte zeigt jetzt die geladene Karten-/Integrationsversion direkt im Footer
+  - "Vollstaendig abgedeckt" zeigt Prozent und Tage der knappsten Kategorie
+  - Kategorien mit 0% Abdeckung werden explizit hervorgehoben
 - **Ab Version 0.2.6-beta.8**
   - Notvorratskarte nutzt fuer Mengen und Einheiten jetzt vorrangig echte Grocy-Stock-Felder
   - `stock_items` enthaelt zusaetzlich `amount_source` und `unit_source` zur Diagnose

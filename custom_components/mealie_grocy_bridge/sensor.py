@@ -3,6 +3,8 @@ from datetime import timedelta, datetime
 import logging
 import re
 import asyncio
+import json
+import os
 from urllib.parse import quote
 
 from homeassistant.components.sensor import SensorEntity
@@ -28,6 +30,7 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+MANIFEST_PATH = os.path.join(os.path.dirname(__file__), "manifest.json")
 
 DEFAULT_BASICS = [
     "salz", "pfeffer", "wasser", "öl", "zucker", "mehl", "gewürz", "prise", "etwas",
@@ -101,6 +104,16 @@ def _normalize_unit(unit_value):
     if not raw_unit:
         return ""
     return UNIT_ALIASES.get(raw_unit, raw_unit)
+
+
+def _read_integration_version():
+    """Read the integration version from manifest.json."""
+    try:
+        with open(MANIFEST_PATH, encoding="utf-8") as manifest_file:
+            return str(json.load(manifest_file).get("version") or "").strip()
+    except Exception as err:
+        _LOGGER.debug("Konnte Integrationsversion nicht lesen: %s", err)
+        return ""
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
@@ -879,4 +892,5 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
             "current_week_mealplan": self.coordinator.mealplan,
             "current_week_range": self.coordinator.mealplan_range,
             "stock_items": self.coordinator.stock_items,
+            "integration_version": _read_integration_version(),
         }
