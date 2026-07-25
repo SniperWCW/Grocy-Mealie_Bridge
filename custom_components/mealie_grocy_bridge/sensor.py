@@ -36,6 +36,72 @@ DEFAULT_BASICS = [
     "petersilie", "schnittlauch", "thymian"
 ]
 
+UNIT_ALIASES = {
+    "g": "g",
+    "gramm": "g",
+    "gram": "g",
+    "gr": "g",
+    "kg": "kg",
+    "kilogramm": "kg",
+    "kilogram": "kg",
+    "mg": "mg",
+    "ml": "ml",
+    "milliliter": "ml",
+    "millilitre": "ml",
+    "l": "l",
+    "lt": "l",
+    "liter": "l",
+    "litre": "l",
+    "cl": "cl",
+    "dl": "dl",
+    "stk": "piece",
+    "stck": "piece",
+    "stueck": "piece",
+    "stuck": "piece",
+    "stuecke": "piece",
+    "portion": "piece",
+    "portionen": "piece",
+    "pcs": "piece",
+    "pc": "piece",
+    "piece": "piece",
+    "pieces": "piece",
+    "egg": "piece",
+    "eggs": "piece",
+}
+
+
+def _safe_float(value, default=0.0):
+    """Convert mixed API values into floats."""
+    if value is None or value == "":
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    text_value = str(value).strip().replace(",", ".")
+    try:
+        return float(text_value)
+    except ValueError:
+        return default
+
+
+def _first_non_empty(*values):
+    """Return the first non-empty value from a list."""
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        return value
+    return None
+
+
+def _normalize_unit(unit_value):
+    """Normalize Grocy quantity units into a compact internal form."""
+    raw_unit = str(unit_value or "").strip().lower()
+    if not raw_unit:
+        return ""
+    return UNIT_ALIASES.get(raw_unit, raw_unit)
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
@@ -59,6 +125,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         self.session = async_get_clientsession(hass)
         self.mealplan = []
         self.mealplan_range = {"start": None, "end": None, "mode": None, "label": None}
+        self.stock_items = []
         
         super().__init__(
             hass,
@@ -251,6 +318,73 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
 
         return cleaned_text.strip().capitalize()
 
+    @staticmethod
+    def _extract_stock_unit(item):
+        """Extract the most useful stock unit label from Grocy stock payloads."""
+        product = item.get("product") if isinstance(item, dict) else {}
+        quantity_unit_stock = item.get("quantity_unit_stock") if isinstance(item, dict) else None
+        if isinstance(quantity_unit_stock, dict):
+            quantity_unit_stock = quantity_unit_stock.get("name")
+
+        product_quantity_unit = product.get("quantity_unit_stock") if isinstance(product, dict) else None
+        if isinstance(product_quantity_unit, dict):
+            product_quantity_unit = product_quantity_unit.get("name")
+
+        return _normalize_unit(
+            _first_non_empty(
+                item.get("quantity_unit_stock_name"),
+                quantity_unit_stock,
+                product.get("qu_name") if isinstance(product, dict) else None,
+                product.get("quantity_unit_purchase_name") if isinstance(product, dict) else None,
+                product_quantity_unit,
+                item.get("qu_name"),
+            )
+        )
+
+    @staticmethod
+    def _extract_stock_snapshot(item):
+        """Build a normalized stock snapshot for the emergency supply card."""
+        if not isinstance(item, dict):
+            return None
+
+        product = item.get("product")
+        if not isinstance(product, dict):
+            return None
+
+        product_name = str(product.get("name") or "").strip()
+        if not product_name:
+            return None
+
+        amount = _safe_float(
+            _first_non_empty(
+                item.get("amount"),
+                item.get("amount_aggregated"),
+                item.get("stock_amount"),
+                item.get("quantity"),
+            )
+        )
+        if amount <= 0:
+            return None
+
+        product_group = product.get("product_group")
+        if isinstance(product_group, dict):
+            product_group = product_group.get("name")
+
+        return {
+            "name": product_name,
+            "amount": amount,
+            "unit": MealieGrocyBridgeCoordinator._extract_stock_unit(item),
+            "best_before_date": item.get("best_before_date"),
+            "product_group": str(product_group or "").strip(),
+            "location": str(
+                _first_non_empty(
+                    item.get("location_name"),
+                    item.get("location", {}).get("name") if isinstance(item.get("location"), dict) else None,
+                )
+                or ""
+            ).strip(),
+        }
+
     async def _fetch_recipe_details(self, semaphore, slug, mealie_url, headers):
         """Fetch full details for a single recipe with concurrency limit and pacing."""
         async with semaphore:
@@ -383,6 +517,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Verbindung zu Grocy fehlgeschlagen: {err}")
 
         grocy_products_map = {}
+        stock_items = []
         in_one_month = today + timedelta(days=30)
 
         for item in (grocy_data or []):
@@ -423,6 +558,14 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                             r'\b' + re.escape(orig_name.lower()) + r'\b'
                         )
                     }
+
+                    stock_snapshot = self._extract_stock_snapshot(item)
+                    if stock_snapshot:
+                        stock_snapshot["status"] = ingredient_status
+                        stock_items.append(stock_snapshot)
+
+        stock_items.sort(key=lambda entry: entry["name"].lower())
+        self.stock_items = stock_items
 
 # =====================================================================
         # 4. MEALIE REZEPTE ABRUFEN
@@ -658,4 +801,5 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
             "mealplan_range": self.coordinator.mealplan_range,
             "current_week_mealplan": self.coordinator.mealplan,
             "current_week_range": self.coordinator.mealplan_range,
+            "stock_items": self.coordinator.stock_items,
         }

@@ -143,6 +143,32 @@ Die Integration bringt eine maßgeschneiderte Lovelace-Karte (`MealieGrocyCard`)
 
 ---
 
+### 4. Krisenvorsorge / Notvorrat
+
+Die bestehende Frontend-Ressource enthaelt jetzt zusaetzlich eine zweite, getrennte Karte fuer die Vorratsbewertung:
+
+```yaml
+type: custom:mealie-grocy-emergency-card
+entity: sensor.mealie_grocy_kochvorschlage
+adults: 2
+children: 1
+days: 10
+collapsible: true
+initially_collapsed: false
+```
+
+Die Rezeptkarte bleibt unveraendert. Die neue Karte nutzt den bereits vorhandenen Grocy-Datenabruf und zeigt pro Erzeugnisgruppe:
+
+- Deckung in Prozent
+- aktuelle Reichweite in Tagen
+- erkannte passende Grocy-Produkte
+
+Die Zielwerte orientieren sich an den BLE-Richtwerten fuer den Notvorrat.
+Mit `collapsible: true` kann die Karte direkt im Dashboard ein- und ausgeblendet werden.
+Mit `initially_collapsed: true` startet sie standardmaessig eingeklappt.
+
+---
+
 ### Automatischer Sektions-Modus (Empfohlen)
 
 Die Karte passt sich dynamisch dem Home Assistant Layout an:

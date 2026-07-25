@@ -955,3 +955,724 @@ class MealieGrocyCard extends LitElement {
 }
 
 customElements.define("mealie-grocy-card", MealieGrocyCard);
+
+const EMERGENCY_SOURCE_URL = "https://www.ernaehrungsvorsorge.de/private-vorsorge/notvorrat/vorratskalkulator";
+const DEFAULT_CHILD_FOOD_FACTOR = 0.7;
+const DEFAULT_CHILD_DRINK_LITERS_PER_DAY = 1;
+
+const EMERGENCY_CATEGORIES = [
+  {
+    id: "grain",
+    title: "Getreide, Brot, Kartoffeln",
+    icon: "mdi:bread-slice-outline",
+    measurement: "grams",
+    adultDailyTarget: 330,
+    alternatives: ["Brot", "Knackebrot", "Reis", "Nudeln", "Haferflocken", "Kartoffeln"],
+    keywords: [
+      "brot", "knackebrot", "reis", "nudel", "hafer", "muesli", "musli", "griess", "gries",
+      "mehl", "wrap", "tortilla", "kartoffel", "couscous", "bulgur", "quinoa", "toast"
+    ],
+  },
+  {
+    id: "vegetables",
+    title: "Gemuese und Huelsenfruechte",
+    icon: "mdi:carrot",
+    measurement: "grams",
+    adultDailyTarget: 400,
+    alternatives: ["Tomaten", "Erbsen", "Mais", "Karotten", "Sauerkraut", "Linsen", "Bohnen"],
+    keywords: [
+      "gemuese", "gemuse", "tomat", "passata", "erbs", "mais", "bohn", "linse", "karott",
+      "mohrr", "paprika", "gurke", "zucchini", "sauerkraut", "rotkohl", "pilz", "champignon",
+      "kichererb", "spinat", "mangold", "brokkoli", "brocoli", "blumenkohl"
+    ],
+  },
+  {
+    id: "fruit",
+    title: "Obst, Nuesse",
+    icon: "mdi:fruit-cherries",
+    measurement: "grams",
+    adultDailyTarget: 250,
+    alternatives: ["Apfelmus", "Trockenobst", "Birnen", "Pfirsiche", "Rosinen", "Nuesse"],
+    keywords: [
+      "obst", "apfel", "birn", "pfirs", "aprik", "mandarin", "orange", "ananas", "beere",
+      "rosin", "trockenobst", "pflaum", "mango", "banan", "kirsch", "nus", "mandel",
+      "cashew", "walnuss", "haselnuss", "erdnuss"
+    ],
+  },
+  {
+    id: "milk",
+    title: "Milch und Milchprodukte",
+    icon: "mdi:cow",
+    measurement: "grams",
+    adultDailyTarget: 260,
+    alternatives: ["H-Milch", "Joghurt", "Hartkaese", "Kondensmilch", "Pflanzendrinks"],
+    keywords: [
+      "milch", "joghurt", "kaese", "kase", "quark", "skyr", "kefir", "sahne", "kondensmilch",
+      "buttermilch", "mozarella", "mozzarella", "feta", "pflanzendrink", "haferdrink", "sojadrink"
+    ],
+  },
+  {
+    id: "protein",
+    title: "Fleisch, Fisch, Eier, Ersatz",
+    icon: "mdi:food-drumstick-outline",
+    measurement: "grams",
+    adultDailyTarget: 120,
+    alternatives: ["Fischkonserven", "Wurst", "Eier", "Tofu", "Lupinen", "Veggie-Ersatz"],
+    keywords: [
+      "fleisch", "fisch", "ei", "eier", "wurst", "schinken", "thunfisch", "makrele", "sardine",
+      "huhn", "chicken", "pute", "rind", "schwein", "tofu", "tempeh", "lupine", "seitan",
+      "hack", "salami", "frikadell", "bratwurst"
+    ],
+  },
+  {
+    id: "fats",
+    title: "Fette und Oele",
+    icon: "mdi:bottle-tonic-plus-outline",
+    measurement: "grams",
+    adultDailyTarget: 35,
+    alternatives: ["Oel", "Butter", "Margarine", "Schmalz", "Nussmus"],
+    keywords: [
+      "oel", "ol", "olivenoel", "rapsoel", "sonnenblumenoel", "butter", "margarine",
+      "schmalz", "nussmus", "erdnussbutter", "kokosoel", "ghee"
+    ],
+  },
+  {
+    id: "drinks",
+    title: "Getraenke",
+    icon: "mdi:cup-water",
+    measurement: "liters",
+    adultDailyTarget: 2,
+    childDailyTarget: DEFAULT_CHILD_DRINK_LITERS_PER_DAY,
+    alternatives: ["Mineralwasser", "Saft", "Tee", "Kaffee", "Haltbare Schorlen"],
+    keywords: [
+      "wasser", "saft", "tee", "kaffee", "cola", "limonade", "schorle", "getraenk", "getrank",
+      "sirup", "iso", "trink"
+    ],
+  },
+];
+
+class MealieGrocyEmergencyCardEditor extends LitElement {
+  static get properties() {
+    return {
+      hass: {},
+      _config: {},
+    };
+  }
+
+  setConfig(config) {
+    this._config = config;
+  }
+
+  _getSchema() {
+    return [
+      { name: "entity", label: "Sensor Entitaet", selector: { entity: { domain: "sensor" } } },
+      {
+        name: "",
+        type: "grid",
+        column_min_width: "100px",
+        schema: [
+          { name: "adults", label: "Erwachsene", selector: { number: { min: 1, max: 20, mode: "box" } } },
+          { name: "children", label: "Kinder", selector: { number: { min: 0, max: 20, mode: "box" } } },
+          { name: "days", label: "Tage", selector: { number: { min: 1, max: 60, mode: "box" } } },
+          { name: "collapsible", label: "Ein-/ausblendbar", selector: { boolean: {} } },
+          { name: "initially_collapsed", label: "Initial eingeklappt", selector: { boolean: {} } },
+        ],
+      },
+    ];
+  }
+
+  render() {
+    if (!this.hass || !this._config) return html``;
+
+    return html`
+      <ha-form
+        .hass=${this.hass}
+        .data=${this._config}
+        .schema=${this._getSchema()}
+        .computeLabel=${(schema) => schema.label}
+        @value-changed=${this._valueChanged}
+      ></ha-form>
+      <div style="padding: 16px; border-top: 1px solid var(--divider-color); margin-top: 16px; font-size: 0.9rem; color: var(--secondary-text-color);">
+        Kinder werden standardmaessig mit 70% des Erwachsenenbedarfs berechnet.
+        Fuer Getraenke wird 1 Liter pro Kind und Tag angesetzt.
+      </div>
+    `;
+  }
+
+  _valueChanged(ev) {
+    const config = { ...ev.detail.value };
+
+    ["adults", "children", "days"].forEach((key) => {
+      if (config[key] === "") delete config[key];
+    });
+    if (typeof config.collapsible !== "boolean") delete config.collapsible;
+    if (typeof config.initially_collapsed !== "boolean") delete config.initially_collapsed;
+
+    this.dispatchEvent(new CustomEvent("config-changed", {
+      detail: { config },
+      bubbles: true,
+      composed: true,
+    }));
+  }
+}
+customElements.define("mealie-grocy-emergency-card-editor", MealieGrocyEmergencyCardEditor);
+
+class MealieGrocyEmergencyCard extends LitElement {
+  static get properties() {
+    return {
+      hass: {},
+      config: {},
+      _collapsed: { type: Boolean },
+    };
+  }
+
+  constructor() {
+    super();
+    this._collapsed = false;
+  }
+
+  static getConfigElement() {
+    return document.createElement("mealie-grocy-emergency-card-editor");
+  }
+
+  static get styles() {
+    return css`
+      :host {
+        display: block;
+        width: 100%;
+      }
+
+      ha-card {
+        padding: 20px;
+        border-radius: 24px;
+        background:
+          radial-gradient(circle at top right, rgba(90, 157, 109, 0.18), transparent 34%),
+          linear-gradient(145deg, rgba(34, 53, 43, 0.96), rgba(24, 32, 28, 0.98));
+        color: #f3f1e8;
+        overflow: hidden;
+      }
+
+      .stack {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
+        gap: 16px;
+        align-items: stretch;
+      }
+
+      .hero-topline {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .hero-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        width: fit-content;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: rgba(243, 241, 232, 0.1);
+        color: rgba(243, 241, 232, 0.92);
+        font-size: 0.78rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .hero h2 {
+        margin: 0;
+        font-size: 1.45rem;
+        line-height: 1.15;
+      }
+
+      .hero p {
+        margin: 0;
+        color: rgba(243, 241, 232, 0.78);
+        line-height: 1.45;
+      }
+
+      .toggle-btn {
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid rgba(243, 241, 232, 0.12);
+        background: rgba(243, 241, 232, 0.08);
+        color: #f3f1e8;
+        border-radius: 999px;
+        padding: 8px 12px;
+        cursor: pointer;
+        font: inherit;
+      }
+
+      .hero-stats {
+        display: grid;
+        gap: 12px;
+      }
+
+      .hero-stat {
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: rgba(243, 241, 232, 0.08);
+        border: 1px solid rgba(243, 241, 232, 0.08);
+      }
+
+      .hero-stat-label {
+        display: block;
+        font-size: 0.76rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: rgba(243, 241, 232, 0.68);
+        margin-bottom: 6px;
+      }
+
+      .hero-stat-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+      }
+
+      .hero-stat-sub {
+        margin-top: 4px;
+        color: rgba(243, 241, 232, 0.68);
+        font-size: 0.86rem;
+      }
+
+      .category-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 14px;
+      }
+
+      .category-card {
+        padding: 16px;
+        border-radius: 20px;
+        background: rgba(248, 246, 239, 0.08);
+        border: 1px solid rgba(248, 246, 239, 0.08);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .category-head,
+      .category-foot,
+      .chip-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .category-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .category-title-text {
+        font-weight: 600;
+        line-height: 1.2;
+      }
+
+      .category-icon {
+        color: #d6ebb4;
+        --mdc-icon-size: 22px;
+      }
+
+      .score-pill {
+        flex: none;
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 0.85rem;
+        font-weight: 700;
+        background: rgba(214, 235, 180, 0.18);
+        color: #edf7d8;
+      }
+
+      .score-pill.low {
+        background: rgba(255, 193, 118, 0.18);
+        color: #ffd7a3;
+      }
+
+      .score-pill.critical {
+        background: rgba(255, 121, 121, 0.18);
+        color: #ffb3b3;
+      }
+
+      .progress-rail {
+        width: 100%;
+        height: 10px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(243, 241, 232, 0.08);
+      }
+
+      .progress-fill {
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #9ecb72, #e4f2a1);
+      }
+
+      .progress-fill.low {
+        background: linear-gradient(90deg, #d49d57, #f3d28e);
+      }
+
+      .progress-fill.critical {
+        background: linear-gradient(90deg, #c85d5d, #f0a4a4);
+      }
+
+      .meta {
+        color: rgba(243, 241, 232, 0.72);
+        font-size: 0.86rem;
+        line-height: 1.4;
+      }
+
+      .chip-row {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+      }
+
+      .chip {
+        border-radius: 999px;
+        padding: 5px 9px;
+        background: rgba(243, 241, 232, 0.08);
+        color: rgba(243, 241, 232, 0.82);
+        font-size: 0.75rem;
+      }
+
+      .matched-list {
+        color: rgba(243, 241, 232, 0.88);
+        font-size: 0.82rem;
+        line-height: 1.45;
+      }
+
+      .footer-note {
+        color: rgba(243, 241, 232, 0.68);
+        font-size: 0.8rem;
+        line-height: 1.45;
+      }
+
+      .footer-note a {
+        color: #d6ebb4;
+      }
+
+      @media (max-width: 700px) {
+        .hero {
+          grid-template-columns: 1fr;
+        }
+      }
+    `;
+  }
+
+  static getStubConfig() {
+    return {
+      entity: "sensor.mealie_grocy_kochvorschlage",
+      adults: 2,
+      children: 0,
+      days: 10,
+      collapsible: true,
+      initially_collapsed: false,
+    };
+  }
+
+  setConfig(config) {
+    this.config = config;
+    this._collapsed = Boolean(config.initially_collapsed);
+  }
+
+  getCardSize() {
+    return 4;
+  }
+
+  render() {
+    if (!this.hass || !this.config) return html``;
+
+    const entityId = this.config.entity || "sensor.mealie_grocy_kochvorschlage";
+    const stateObj = this.hass.states[entityId];
+
+    if (!stateObj || !stateObj.attributes?.stock_items) {
+      return html`<ha-card>Warte auf Grocy-Bestandsdaten...</ha-card>`;
+    }
+
+    const adults = this._toPositiveInt(this.config.adults, 2);
+    const children = this._toPositiveInt(this.config.children, 0, true);
+    const days = this._toPositiveInt(this.config.days, 10);
+    const collapsible = this.config.collapsible !== false;
+    const stockItems = stateObj.attributes.stock_items || [];
+    const summary = this._buildSummary(stockItems, adults, children, days);
+    const overallDays = Math.floor(summary.overallDaysCoverage);
+
+    return html`
+      <ha-card>
+        <div class="stack">
+          <div class="hero">
+            <div class="hero-copy">
+              <div class="hero-topline">
+                <div class="eyebrow">
+                  <ha-icon icon="mdi:shield-check-outline"></ha-icon>
+                  <span>Krisenvorsorge</span>
+                </div>
+                ${collapsible ? html`
+                  <button type="button" class="toggle-btn" @click=${this._toggleCollapsed}>
+                    <ha-icon icon="${this._collapsed ? "mdi:eye-outline" : "mdi:eye-off-outline"}"></ha-icon>
+                    <span>${this._collapsed ? "Einblenden" : "Ausblenden"}</span>
+                  </button>
+                ` : ""}
+              </div>
+              <h2>Notvorrat fuer ${adults} Erwachsene, ${children} Kinder und ${days} Tage</h2>
+              <p>
+                Die Bewertung basiert auf den BLE-Richtwerten pro Tag und erwachsene Person.
+                Kinder werden mit 70% angesetzt, Getraenke mit 1 Liter pro Kind und Tag.
+              </p>
+            </div>
+
+            <div class="hero-stats">
+              <div class="hero-stat">
+                <span class="hero-stat-label">Vollstaendig abgedeckt</span>
+                <div class="hero-stat-value">${overallDays} Tage</div>
+                <div class="hero-stat-sub">begrenzt durch die knappste Kategorie</div>
+              </div>
+              <div class="hero-stat">
+                <span class="hero-stat-label">Gruppen im Ziel</span>
+                <div class="hero-stat-value">${summary.categoriesAtTarget}/${summary.categories.length}</div>
+                <div class="hero-stat-sub">${summary.lowestCategory.title}: ${summary.lowestCategory.scoreLabel}</div>
+              </div>
+            </div>
+          </div>
+
+          ${this._collapsed ? "" : html`
+            <div class="category-grid">
+              ${summary.categories.map((category) => html`
+                <div class="category-card">
+                  <div class="category-head">
+                    <div class="category-title">
+                      <ha-icon class="category-icon" icon="${category.icon}"></ha-icon>
+                      <div class="category-title-text">${category.title}</div>
+                    </div>
+                    <div class="score-pill ${category.tone}">${category.scoreLabel}</div>
+                  </div>
+
+                  <div class="progress-rail">
+                    <div class="progress-fill ${category.tone}" style="width: ${category.progressPercent}%;"></div>
+                  </div>
+
+                  <div class="category-foot meta">
+                    <span>Ist: ${category.actualLabel}</span>
+                    <span>Ziel: ${category.targetLabel}</span>
+                  </div>
+
+                  <div class="meta">
+                    Reicht fuer ca. <strong>${category.daysLabel}</strong> Tage.
+                    ${category.matchedItems.length > 0
+                      ? html`Erfasst wurden ${category.matchedItems.length} passende Produkte.`
+                      : html`Aktuell wurde kein passendes Produkt aus Grocy erkannt.`}
+                  </div>
+
+                  <div class="chip-row">
+                    ${category.alternatives.map((item) => html`<span class="chip">${item}</span>`)}
+                  </div>
+
+                  ${category.matchedItems.length > 0 ? html`
+                    <div class="matched-list">${category.matchedItems.join(", ")}</div>
+                  ` : ""}
+                </div>
+              `)}
+            </div>
+
+            <div class="footer-note">
+              Quelle der Richtwerte: Bundeszentrum fuer Ernaehrung / BLE.
+              Der offizielle Kalkulator auf ${this._renderLink(EMERGENCY_SOURCE_URL)} nutzt Personen gesamt und Tage,
+              die getrennte Erwachsenen-/Kinderlogik wird hier lokal aus den BLE-Mengen abgeleitet.
+            </div>
+          `}
+        </div>
+      </ha-card>
+    `;
+  }
+
+  _toggleCollapsed = () => {
+    if (this.config?.collapsible === false) return;
+    this._collapsed = !this._collapsed;
+  };
+
+  _renderLink(url) {
+    return html`<a href="${url}" target="_blank" rel="noreferrer">ernaehrungsvorsorge.de</a>`;
+  }
+
+  _toPositiveInt(value, fallback, allowZero = false) {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isNaN(parsed)) return fallback;
+    if (allowZero) return Math.max(0, parsed);
+    return Math.max(1, parsed);
+  }
+
+  _buildSummary(stockItems, adults, children, days) {
+    const categories = EMERGENCY_CATEGORIES.map((category) => {
+      const targetAmount = this._getCategoryTarget(category, adults, children, days);
+      const dailyAmount = this._getCategoryTarget(category, adults, children, 1);
+      const matchedItems = stockItems.filter((item) => this._matchesCategory(item, category));
+      const actualAmount = matchedItems.reduce(
+        (sum, item) => sum + this._convertStockAmount(item, category),
+        0,
+      );
+      const rawScore = targetAmount > 0 ? (actualAmount / targetAmount) * 100 : 0;
+      const scorePercent = Math.max(0, Math.min(100, rawScore));
+      const daysCoverage = dailyAmount > 0 ? actualAmount / dailyAmount : 0;
+      const tone = scorePercent >= 100 ? "" : scorePercent >= 50 ? "low" : "critical";
+      const progressPercent = scorePercent <= 0 ? 0 : Math.max(4, Math.min(100, Math.round(scorePercent)));
+
+      return {
+        ...category,
+        actualAmount,
+        targetAmount,
+        daysCoverage,
+        progressPercent,
+        scoreLabel: `${Math.round(scorePercent)}%`,
+        tone,
+        daysLabel: this._formatDays(daysCoverage),
+        actualLabel: this._formatMeasuredAmount(actualAmount, category.measurement),
+        targetLabel: this._formatMeasuredAmount(targetAmount, category.measurement),
+        matchedItems: matchedItems.slice(0, 6).map((item) => item.name),
+      };
+    });
+
+    const lowestCategory = categories.reduce((lowest, current) => (
+      !lowest || current.daysCoverage < lowest.daysCoverage ? current : lowest
+    ), null);
+
+    return {
+      categories,
+      categoriesAtTarget: categories.filter((category) => category.actualAmount >= category.targetAmount).length,
+      overallDaysCoverage: lowestCategory?.daysCoverage || 0,
+      lowestCategory: lowestCategory || categories[0],
+    };
+  }
+
+  _getCategoryTarget(category, adults, children, days) {
+    const adultShare = category.adultDailyTarget * adults * days;
+    const childPerDay = category.childDailyTarget
+      ?? (category.measurement === "liters"
+        ? category.adultDailyTarget * DEFAULT_CHILD_FOOD_FACTOR
+        : category.adultDailyTarget * DEFAULT_CHILD_FOOD_FACTOR);
+    return adultShare + (childPerDay * children * days);
+  }
+
+  _matchesCategory(item, category) {
+    const haystack = this._normalizeText([
+      item.name,
+      item.product_group,
+      item.location,
+    ].filter(Boolean).join(" "));
+    const tokens = haystack.split(" ").filter(Boolean);
+
+    return category.keywords.some((keyword) => {
+      const normalizedKeyword = this._normalizeText(keyword);
+      if (!normalizedKeyword) return false;
+      if (normalizedKeyword.includes(" ")) return haystack.includes(normalizedKeyword);
+      return tokens.some((token) => token === normalizedKeyword || token.startsWith(normalizedKeyword));
+    });
+  }
+
+  _normalizeText(value) {
+    return String(value || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  }
+
+  _normalizeUnit(value) {
+    const raw = this._normalizeText(value);
+    const mapping = {
+      g: "g",
+      gram: "g",
+      gramm: "g",
+      gr: "g",
+      kg: "kg",
+      mg: "mg",
+      ml: "ml",
+      l: "l",
+      liter: "l",
+      cl: "cl",
+      dl: "dl",
+      st: "piece",
+      stk: "piece",
+      stck: "piece",
+      stueck: "piece",
+      stuck: "piece",
+      piece: "piece",
+      pcs: "piece",
+      portion: "piece",
+    };
+    return mapping[raw] || raw;
+  }
+
+  _convertStockAmount(item, category) {
+    const amount = Number(item.amount) || 0;
+    const unit = this._normalizeUnit(item.unit);
+    if (amount <= 0) return 0;
+
+    if (category.measurement === "liters") {
+      if (unit === "l") return amount;
+      if (unit === "ml") return amount / 1000;
+      if (unit === "cl") return amount / 100;
+      if (unit === "dl") return amount / 10;
+      return 0;
+    }
+
+    if (unit === "kg") return amount * 1000;
+    if (unit === "g") return amount;
+    if (unit === "mg") return amount / 1000;
+    if (unit === "ml") return amount * this._densityFor(item.name);
+    if (unit === "cl") return amount * 10 * this._densityFor(item.name);
+    if (unit === "dl") return amount * 100 * this._densityFor(item.name);
+    if (unit === "l") return amount * 1000 * this._densityFor(item.name);
+    if (unit === "piece") return amount * this._pieceWeightFor(item.name, category.id);
+    return 0;
+  }
+
+  _densityFor(name) {
+    const normalized = this._normalizeText(name);
+    if (normalized.includes("oel") || normalized.includes("ol")) return 0.92;
+    return 1;
+  }
+
+  _pieceWeightFor(name, categoryId) {
+    const normalized = this._normalizeText(name);
+    if (categoryId === "protein" && (/\bei\b/.test(normalized) || /\beier\b/.test(normalized))) return 53;
+    return 0;
+  }
+
+  _formatMeasuredAmount(amount, measurement) {
+    if (measurement === "liters") {
+      return `${amount.toFixed(amount >= 10 ? 0 : 1)} l`;
+    }
+
+    if (amount >= 1000) {
+      return `${(amount / 1000).toFixed(amount >= 10000 ? 0 : 1)} kg`;
+    }
+    return `${Math.round(amount)} g`;
+  }
+
+  _formatDays(value) {
+    if (!Number.isFinite(value) || value <= 0) return "0";
+    if (value >= 10) return `${Math.floor(value)}`;
+    return value.toFixed(1);
+  }
+}
+
+customElements.define("mealie-grocy-emergency-card", MealieGrocyEmergencyCard);
