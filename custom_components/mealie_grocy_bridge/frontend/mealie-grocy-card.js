@@ -1051,6 +1051,25 @@ const EMERGENCY_CATEGORIES = [
   },
 ];
 
+const fatsCategory = EMERGENCY_CATEGORIES.find((category) => category.id === "fats");
+if (fatsCategory) {
+  fatsCategory.alternatives = ["Olivenöl", "Sonnenblumenöl", "Rapsöl", "Butter", "Margarine", "Nussmus"];
+  fatsCategory.keywords = [
+    ...fatsCategory.keywords,
+    "olivenol",
+    "oliven",
+    "olive",
+    "rapsol",
+    "raps",
+    "sonnenblumenol",
+    "sonnenblumen",
+    "speiseoel",
+    "speiseol",
+    "erdnusspaste",
+    "kokosol",
+  ];
+}
+
 const EMERGENCY_UNITLESS_ESTIMATES = {
   grain: [
     { pattern: /\b(mehl)\b/, grams: 1000 },
@@ -1691,6 +1710,7 @@ class MealieGrocyEmergencyCard extends LitElement {
 
     if (category.id === "protein") {
       if (/(asia nudeln|ramen|ramyun|chapaghetti|yumyum|yum yum|udon|wan tan nudeln)/.test(name)) return true;
+      if (/(fond|bruhe|bruehe|bouillon|suppenbasis)/.test(name)) return true;
     }
 
     return false;
