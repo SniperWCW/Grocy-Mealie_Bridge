@@ -24,6 +24,10 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 
 ## ✨ Neu 
 
+- **Ab Version 0.2.6-beta.11**
+  - Gesamtansicht der Notvorratskarte zeigt jetzt den mittleren Abdeckungswert aller Kategorien als Gesamt-Prozent
+  - Gesamtansicht zeigt zusaetzlich die durchschnittliche Reichweite in Tagen statt nur den schlechtesten Einzelwert
+  - Engpass bleibt weiterhin sichtbar ueber die knappste Kategorie mit Prozent und Tagen
 - **Ab Version 0.2.6-beta.10**
   - Notvorratskarte zaehlt bei Grundnahrungsmitteln jetzt konservativer und naeher an der offiziellen PDF-Vorlage
   - Instant-/Snackprodukte wie Ramen, YumYum oder Chapaghetti zaehlen nicht mehr als verlaessliche Notfall-Grundversorgung

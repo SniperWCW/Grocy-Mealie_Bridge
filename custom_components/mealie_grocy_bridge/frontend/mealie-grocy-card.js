@@ -1565,7 +1565,7 @@ class MealieGrocyEmergencyCard extends LitElement {
               <div class="hero-stat">
                 <span class="hero-stat-label">Gruppen im Ziel</span>
                 <div class="hero-stat-value">${summary.categoriesAtTarget}/${summary.categories.length}</div>
-                <div class="hero-stat-sub">${summary.lowestCategory.title}: ${summary.lowestCategory.scoreLabel}</div>
+                <div class="hero-stat-sub">${summary.lowestCategory.title}: ${summary.lowestCategory.scoreLabel} / ${summary.lowestCategory.daysLabel} Tage</div>
               </div>
             </div>
           </div>
@@ -1683,12 +1683,19 @@ class MealieGrocyEmergencyCard extends LitElement {
     const lowestCategory = categories.reduce((lowest, current) => (
       !lowest || current.daysCoverage < lowest.daysCoverage ? current : lowest
     ), null);
+    const averageScorePercent = categories.length > 0
+      ? categories.reduce((sum, category) => sum + category.scorePercent, 0) / categories.length
+      : 0;
+    const averageDaysCoverage = categories.length > 0
+      ? categories.reduce((sum, category) => sum + category.daysCoverage, 0) / categories.length
+      : 0;
 
     return {
       categories,
       categoriesAtTarget: categories.filter((category) => category.actualAmount >= category.targetAmount).length,
-      overallDaysCoverage: lowestCategory?.daysCoverage || 0,
-      overallScorePercent: lowestCategory?.scorePercent || 0,
+      overallDaysCoverage: averageDaysCoverage,
+      overallScorePercent: averageScorePercent,
+      lowestDaysCoverage: lowestCategory?.daysCoverage || 0,
       lowestCategory: lowestCategory || categories[0],
       zeroCategories: categories.filter((category) => category.scorePercent === 0),
     };
@@ -1889,16 +1896,16 @@ class MealieGrocyEmergencyCard extends LitElement {
   _formatOverallCoverage(scorePercent, daysCoverage) {
     const percentLabel = this._formatPercent(scorePercent);
     const dayLabel = this._formatCoverageLabel(daysCoverage);
-    if (!Number.isFinite(scorePercent) || scorePercent <= 0 || !Number.isFinite(daysCoverage) || daysCoverage <= 0) {
+    if (!Number.isFinite(scorePercent) || scorePercent <= 0) {
       return {
         label: "Nicht abgedeckt",
-        detail: `${percentLabel} / ${dayLabel}`,
+        detail: `${percentLabel} / ${dayLabel} Durchschnittsreichweite`,
       };
     }
 
     return {
       label: percentLabel,
-      detail: `${dayLabel} Vorrat, begrenzt durch die knappste Kategorie`,
+      detail: `${dayLabel} durchschnittliche Reichweite`,
     };
   }
 }
