@@ -14,7 +14,7 @@ class MealieGrocyCardEditor extends LitElement {
 
   _getSchema() {
     return [
-      { name: "entity", label: "Sensor Entitat", selector: { entity: { domain: "sensor" } } },
+      { name: "entity", label: "Sensor Entität", selector: { entity: { domain: "sensor" } } },
       {
         name: "display_mode",
         label: "Darstellung",
@@ -22,8 +22,8 @@ class MealieGrocyCardEditor extends LitElement {
           select: {
             options: [
               { value: "default", label: "Standard - Vollansicht" },
-              { value: "mini", label: "Mini - kompakter, weniger Hohe" },
-              { value: "compact", label: "Kompakt - sehr platzsparend, ideal fur 4-6 Spalten" },
+              { value: "mini", label: "Mini - kompakter, weniger Höhe" },
+              { value: "compact", label: "Kompakt - sehr platzsparend, ideal für 4-6 Spalten" },
               { value: "list", label: "Liste - extrem kompakt, eine Zeile pro Rezept" },
             ],
           },
@@ -55,7 +55,7 @@ class MealieGrocyCardEditor extends LitElement {
       ></ha-form>
       <div style="padding: 16px; border-top: 1px solid var(--divider-color); margin-top: 16px; font-size: 0.9rem; color: var(--secondary-text-color);">
         <strong>Hinweis zur Spaltenwahl:</strong><br>
-        Wenn du bei <strong>Spalten (Erzwingen)</strong> eine Zahl eintragst, wird das Raster fest darauf gesetzt. Lasst du das Feld leer, kann Home Assistant die Kartenbreite wieder flexibel uber das Layout steuern.
+        Wenn du bei <strong>Spalten (Erzwingen)</strong> eine Zahl eintragst, wird das Raster fest darauf gesetzt. Lässt du das Feld leer, kann Home Assistant die Kartenbreite wieder flexibel über das Layout steuern.
       </div>
     `;
   }
@@ -603,7 +603,7 @@ class MealieGrocyCard extends LitElement {
                 </div>
                 <div class="recipe-pagination">
                   <button class="nav-btn" ?disabled=${this._recipePage === 0} @click=${this._showPreviousPage}>
-                    Zuruck
+                    Zurück
                   </button>
                   <div class="page-indicator">Seite ${this._recipePage + 1}/${totalPages}</div>
                   <button class="nav-btn" ?disabled=${this._recipePage >= totalPages - 1} @click=${this._showNextPage}>
@@ -754,7 +754,7 @@ class MealieGrocyCard extends LitElement {
                   `)}
                 </div>
               ` : html`
-                <div class="mealplan-empty">Fur den gewahlten Zeitraum sind aktuell keine Eintrage vorhanden.</div>
+                <div class="mealplan-empty">Für den gewählten Zeitraum sind aktuell keine Einträge vorhanden.</div>
               `}
             </div>
           ` : ""}
@@ -975,7 +975,7 @@ const EMERGENCY_CATEGORIES = [
   },
   {
     id: "vegetables",
-    title: "Gemuese und Huelsenfruechte",
+    title: "Gemüse und Hülsenfrüchte",
     icon: "mdi:carrot",
     measurement: "grams",
     adultDailyTarget: 400,
@@ -988,11 +988,11 @@ const EMERGENCY_CATEGORIES = [
   },
   {
     id: "fruit",
-    title: "Obst, Nuesse",
+    title: "Obst, Nüsse",
     icon: "mdi:fruit-cherries",
     measurement: "grams",
     adultDailyTarget: 250,
-    alternatives: ["Apfelmus", "Trockenobst", "Birnen", "Pfirsiche", "Rosinen", "Nuesse"],
+    alternatives: ["Apfelmus", "Trockenobst", "Birnen", "Pfirsiche", "Rosinen", "Nüsse"],
     keywords: [
       "obst", "apfel", "birn", "pfirs", "aprik", "mandarin", "orange", "ananas", "beere",
       "rosin", "trockenobst", "pflaum", "mango", "banan", "kirsch", "nus", "mandel",
@@ -1005,7 +1005,7 @@ const EMERGENCY_CATEGORIES = [
     icon: "mdi:cow",
     measurement: "grams",
     adultDailyTarget: 260,
-    alternatives: ["H-Milch", "Joghurt", "Hartkaese", "Kondensmilch", "Pflanzendrinks"],
+    alternatives: ["H-Milch", "Joghurt", "Hartkäse", "Kondensmilch", "Pflanzendrinks"],
     keywords: [
       "milch", "joghurt", "kaese", "kase", "quark", "skyr", "kefir", "sahne", "kondensmilch",
       "buttermilch", "mozarella", "mozzarella", "feta", "pflanzendrink", "haferdrink", "sojadrink"
@@ -1026,11 +1026,11 @@ const EMERGENCY_CATEGORIES = [
   },
   {
     id: "fats",
-    title: "Fette und Oele",
+    title: "Fette und Öle",
     icon: "mdi:bottle-tonic-plus-outline",
     measurement: "grams",
     adultDailyTarget: 35,
-    alternatives: ["Oel", "Butter", "Margarine", "Schmalz", "Nussmus"],
+    alternatives: ["Öl", "Butter", "Margarine", "Schmalz", "Nussmus"],
     keywords: [
       "oel", "ol", "olivenoel", "rapsoel", "sonnenblumenoel", "butter", "margarine",
       "schmalz", "nussmus", "erdnussbutter", "kokosoel", "ghee"
@@ -1038,7 +1038,7 @@ const EMERGENCY_CATEGORIES = [
   },
   {
     id: "drinks",
-    title: "Getraenke",
+    title: "Getränke",
     icon: "mdi:cup-water",
     measurement: "liters",
     adultDailyTarget: 2,
@@ -1108,7 +1108,7 @@ class MealieGrocyEmergencyCardEditor extends LitElement {
 
   _getSchema() {
     return [
-      { name: "entity", label: "Sensor Entitaet", selector: { entity: { domain: "sensor" } } },
+      { name: "entity", label: "Sensor Entität", selector: { entity: { domain: "sensor" } } },
       {
         name: "",
         type: "grid",
@@ -1136,8 +1136,8 @@ class MealieGrocyEmergencyCardEditor extends LitElement {
         @value-changed=${this._valueChanged}
       ></ha-form>
       <div style="padding: 16px; border-top: 1px solid var(--divider-color); margin-top: 16px; font-size: 0.9rem; color: var(--secondary-text-color);">
-        Kinder werden standardmaessig mit 70% des Erwachsenenbedarfs berechnet.
-        Fuer Getraenke wird 1 Liter pro Kind und Tag angesetzt.
+        Kinder werden standardmäßig mit 70% des Erwachsenenbedarfs berechnet.
+        Für Getränke wird 1 Liter pro Kind und Tag angesetzt.
       </div>
     `;
   }
@@ -1475,16 +1475,16 @@ class MealieGrocyEmergencyCard extends LitElement {
                   </button>
                 ` : ""}
               </div>
-              <h2>Notvorrat fuer ${adults} Erwachsene, ${children} Kinder und ${days} Tage</h2>
+              <h2>Notvorrat für ${adults} Erwachsene, ${children} Kinder und ${days} Tage</h2>
               <p>
                 Die Bewertung basiert auf den BLE-Richtwerten pro Tag und erwachsene Person.
-                Kinder werden mit 70% angesetzt, Getraenke mit 1 Liter pro Kind und Tag.
+                Kinder werden mit 70% angesetzt, Getränke mit 1 Liter pro Kind und Tag.
               </p>
             </div>
 
             <div class="hero-stats">
               <div class="hero-stat">
-                <span class="hero-stat-label">Vollstaendig abgedeckt</span>
+                <span class="hero-stat-label">Vollständig abgedeckt</span>
                 <div class="hero-stat-value">${overallDaysLabel}</div>
                 <div class="hero-stat-sub">begrenzt durch die knappste Kategorie</div>
               </div>
@@ -1518,7 +1518,7 @@ class MealieGrocyEmergencyCard extends LitElement {
                   </div>
 
                   <div class="meta">
-                    Reicht fuer ca. <strong>${category.daysLabel}</strong> Tage.
+                    Reicht für ca. <strong>${category.daysLabel}</strong> Tage.
                     ${category.matchedItems.length > 0
                       ? html`Erfasst wurden ${category.matchedItems.length} passende Produkte.`
                       : html`Aktuell wurde kein passendes Produkt aus Grocy erkannt.`}
@@ -1526,7 +1526,7 @@ class MealieGrocyEmergencyCard extends LitElement {
 
                   ${category.usesEstimatedAmounts ? html`
                     <div class="meta">
-                      Artikel ohne Grocy-Einheit werden aktuell mit typischen Packungsgroessen geschaetzt.
+                      Artikel ohne Grocy-Einheit werden aktuell mit typischen Packungsgrößen geschätzt.
                     </div>
                   ` : ""}
 
@@ -1542,7 +1542,7 @@ class MealieGrocyEmergencyCard extends LitElement {
             </div>
 
             <div class="footer-note">
-              Quelle der Richtwerte: Bundeszentrum fuer Ernaehrung / BLE.
+              Quelle der Richtwerte: Bundeszentrum für Ernährung / BLE.
               Der offizielle Kalkulator auf ${this._renderLink(EMERGENCY_SOURCE_URL)} nutzt Personen gesamt und Tage,
               die getrennte Erwachsenen-/Kinderlogik wird hier lokal aus den BLE-Mengen abgeleitet.
             </div>
