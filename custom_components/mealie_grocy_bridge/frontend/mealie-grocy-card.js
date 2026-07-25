@@ -1055,6 +1055,7 @@ const EMERGENCY_UNITLESS_ESTIMATES = {
   grain: [
     { pattern: /\b(mehl)\b/, grams: 1000 },
     { pattern: /\b(reis|linsen|graupen|grie|hafer|muesli|musli)\b/, grams: 500 },
+    { pattern: /\b(asia nudeln|ramen|ramyun|yumyum|yum yum|udonnoodle|udon noodle|jjajang|neoguri|shin|chapaghetti|shrimp ramen|wan tan nudeln)\b/, grams: 75 },
     { pattern: /\b(nudel|spaghetti|fusilli|farfalle|penne|rigate|tortiglioni|lasagneplatten|spatzle|spaetzle|gnocchi)\b/, grams: 500 },
     { pattern: /\b(kartoffelpuree|kartoffelbrei)\b/, grams: 250 },
     { pattern: /\b(brot|toast|laugenstangen|chapathi|chapati|durum|dürüm|wrap|taco)\b/, grams: 250 },
@@ -1089,7 +1090,7 @@ const EMERGENCY_UNITLESS_ESTIMATES = {
     { pattern: /\b(milch)\b/, liters: 1 },
     { pattern: /\b(sahne)\b/, liters: 0.2 },
     { pattern: /\b(kondensmilch)\b/, liters: 0.17 },
-    { pattern: /\b(saft|cola|limonade|schorle|getrank|getraenk)\b/, liters: 1 },
+    { pattern: /\b(mineralwasser|trinkwasser|saft|cola|limonade|schorle|getrank|getraenk)\b/, liters: 1 },
   ],
 };
 
@@ -1455,7 +1456,7 @@ class MealieGrocyEmergencyCard extends LitElement {
     const collapsible = this.config.collapsible !== false;
     const stockItems = stateObj.attributes.stock_items || [];
     const summary = this._buildSummary(stockItems, adults, children, days);
-    const overallDays = Math.floor(summary.overallDaysCoverage);
+    const overallDaysLabel = this._formatCoverageLabel(summary.overallDaysCoverage);
 
     return html`
       <ha-card>
@@ -1484,7 +1485,7 @@ class MealieGrocyEmergencyCard extends LitElement {
             <div class="hero-stats">
               <div class="hero-stat">
                 <span class="hero-stat-label">Vollstaendig abgedeckt</span>
-                <div class="hero-stat-value">${overallDays} Tage</div>
+                <div class="hero-stat-value">${overallDaysLabel}</div>
                 <div class="hero-stat-sub">begrenzt durch die knappste Kategorie</div>
               </div>
               <div class="hero-stat">
@@ -1620,6 +1621,10 @@ class MealieGrocyEmergencyCard extends LitElement {
   }
 
   _matchesCategory(item, category) {
+    if (this._isExcludedCategoryMatch(item, category)) {
+      return false;
+    }
+
     const haystack = this._normalizeText([
       item.name,
       item.product_group,
@@ -1633,6 +1638,22 @@ class MealieGrocyEmergencyCard extends LitElement {
       if (normalizedKeyword.includes(" ")) return haystack.includes(normalizedKeyword);
       return tokens.some((token) => token === normalizedKeyword || token.startsWith(normalizedKeyword));
     });
+  }
+
+  _isExcludedCategoryMatch(item, category) {
+    const name = this._normalizeText(item?.name);
+
+    if (category.id === "drinks") {
+      if (name.includes("kaffeebohnen")) return true;
+      if (name.includes("thunfisch") || name.includes("fischfilet")) return true;
+      if (name.includes("eigenem saft")) return true;
+    }
+
+    if (category.id === "grain") {
+      if (name.includes("kartoffelsnacks") || name.includes("chips")) return true;
+    }
+
+    return false;
   }
 
   _normalizeText(value) {
@@ -1758,6 +1779,13 @@ class MealieGrocyEmergencyCard extends LitElement {
     if (!Number.isFinite(value) || value <= 0) return "0";
     if (value >= 10) return `${Math.floor(value)}`;
     return value.toFixed(1);
+  }
+
+  _formatCoverageLabel(value) {
+    if (!Number.isFinite(value) || value <= 0) return "Nicht abgedeckt";
+    if (value < 1) return "< 1 Tag";
+    if (value >= 10) return `${Math.floor(value)} Tage`;
+    return `${value.toFixed(1)} Tage`;
   }
 }
 
