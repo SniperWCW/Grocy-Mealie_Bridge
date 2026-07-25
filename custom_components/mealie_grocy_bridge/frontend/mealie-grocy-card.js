@@ -1569,14 +1569,15 @@ class MealieGrocyEmergencyCard extends LitElement {
   }
 
   _buildSummary(stockItems, adults, children, days) {
+    const usableStockItems = stockItems.filter((item) => item?.status !== "expired");
     const categories = EMERGENCY_CATEGORIES.map((category) => {
       const targetAmount = this._getCategoryTarget(category, adults, children, days);
       const dailyAmount = this._getCategoryTarget(category, adults, children, 1);
-      const matchedItems = stockItems.filter((item) => this._matchesCategory(item, category));
-      const actualAmount = matchedItems.reduce(
-        (sum, item) => sum + this._convertStockAmount(item, category),
-        0,
-      );
+      const matchedItems = usableStockItems
+        .filter((item) => this._matchesCategory(item, category))
+        .map((item) => ({ item, convertedAmount: this._convertStockAmount(item, category) }))
+        .filter((entry) => entry.convertedAmount > 0);
+      const actualAmount = matchedItems.reduce((sum, entry) => sum + entry.convertedAmount, 0);
       const rawScore = targetAmount > 0 ? (actualAmount / targetAmount) * 100 : 0;
       const scorePercent = Math.max(0, Math.min(100, rawScore));
       const daysCoverage = dailyAmount > 0 ? actualAmount / dailyAmount : 0;
@@ -1588,14 +1589,14 @@ class MealieGrocyEmergencyCard extends LitElement {
         actualAmount,
         targetAmount,
         daysCoverage,
-        usesEstimatedAmounts: matchedItems.some((item) => this._usesEstimatedAmount(item, category)),
+        usesEstimatedAmounts: matchedItems.some((entry) => this._usesEstimatedAmount(entry.item, category)),
         progressPercent,
         scoreLabel: `${Math.round(scorePercent)}%`,
         tone,
         daysLabel: this._formatDays(daysCoverage),
         actualLabel: this._formatMeasuredAmount(actualAmount, category.measurement),
         targetLabel: this._formatMeasuredAmount(targetAmount, category.measurement),
-        matchedItems: matchedItems.slice(0, 6).map((item) => item.name),
+        matchedItems: matchedItems.slice(0, 6).map((entry) => entry.item.name),
       };
     });
 
@@ -1636,6 +1637,9 @@ class MealieGrocyEmergencyCard extends LitElement {
       const normalizedKeyword = this._normalizeText(keyword);
       if (!normalizedKeyword) return false;
       if (normalizedKeyword.includes(" ")) return haystack.includes(normalizedKeyword);
+      if (normalizedKeyword.length <= 2) {
+        return tokens.some((token) => token === normalizedKeyword);
+      }
       return tokens.some((token) => token === normalizedKeyword || token.startsWith(normalizedKeyword));
     });
   }
@@ -1651,6 +1655,10 @@ class MealieGrocyEmergencyCard extends LitElement {
 
     if (category.id === "grain") {
       if (name.includes("kartoffelsnacks") || name.includes("chips")) return true;
+    }
+
+    if (category.id === "protein") {
+      if (/(asia nudeln|ramen|ramyun|chapaghetti|yumyum|yum yum|udon|wan tan nudeln)/.test(name)) return true;
     }
 
     return false;
@@ -1714,6 +1722,7 @@ class MealieGrocyEmergencyCard extends LitElement {
     if (unit === "piece") {
       const pieceWeight = this._pieceWeightFor(item.name, category.id);
       if (pieceWeight > 0) return amount * pieceWeight;
+      return 0;
     }
     return this._estimateUnitlessAmount(item, category);
   }
@@ -1760,7 +1769,6 @@ class MealieGrocyEmergencyCard extends LitElement {
   _usesEstimatedAmount(item, category) {
     const unit = this._normalizeUnit(item.unit);
     if (!unit) return this._estimateUnitlessAmount(item, category) > 0;
-    if (unit === "piece") return this._pieceWeightFor(item.name, category.id) <= 0;
     return false;
   }
 

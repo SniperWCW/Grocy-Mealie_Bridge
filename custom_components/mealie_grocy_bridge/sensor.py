@@ -326,27 +326,29 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         if isinstance(quantity_unit_stock, dict):
             quantity_unit_stock = quantity_unit_stock.get("name")
 
-        product_quantity_unit = product.get("quantity_unit_stock") if isinstance(product, dict) else None
-        if isinstance(product_quantity_unit, dict):
-            product_quantity_unit = product_quantity_unit.get("name")
-
         explicit_stock_unit = _normalize_unit(
             _first_non_empty(
                 item.get("quantity_unit_stock_name"),
                 quantity_unit_stock,
+            )
+        )
+        if explicit_stock_unit:
+            return explicit_stock_unit, "quantity_unit_stock_name"
+
+        product_quantity_unit = product.get("quantity_unit_stock") if isinstance(product, dict) else None
+        if isinstance(product_quantity_unit, dict):
+            product_quantity_unit = product_quantity_unit.get("name")
+
+        product_stock_unit = _normalize_unit(
+            _first_non_empty(
                 product.get("quantity_unit_stock_name") if isinstance(product, dict) else None,
                 product_quantity_unit,
             )
         )
-        if explicit_stock_unit:
-            return explicit_stock_unit
+        if product_stock_unit:
+            return product_stock_unit, "product.quantity_unit_stock"
 
-        return _normalize_unit(
-            _first_non_empty(
-                product.get("qu_name") if isinstance(product, dict) else None,
-                product.get("default_quantity_unit_consume_name") if isinstance(product, dict) else None,
-            )
-        )
+        return "", ""
 
     @staticmethod
     def _build_quantity_unit_map(quantity_units):
@@ -376,9 +378,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
             item.get("qu_id_stock"),
             item.get("quantity_unit_stock_id"),
             product.get("qu_id_stock") if isinstance(product, dict) else None,
-            product.get("qu_id_purchase") if isinstance(product, dict) else None,
-            product.get("qu_id_consume") if isinstance(product, dict) else None,
-            item.get("qu_id"),
         ]
 
         for candidate_id in candidate_ids:
@@ -391,6 +390,19 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                 return resolved_unit
 
         return ""
+
+    @staticmethod
+    def _extract_stock_amount(item):
+        """Extract the stock amount from the most stock-specific Grocy fields."""
+        if not isinstance(item, dict):
+            return 0.0, ""
+
+        for field_name in ("stock_amount", "amount_aggregated", "amount", "quantity"):
+            amount = _safe_float(item.get(field_name))
+            if amount > 0:
+                return amount, field_name
+
+        return 0.0, ""
 
     @staticmethod
     def _extract_stock_snapshot(item, quantity_unit_map=None):
@@ -406,14 +418,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         if not product_name:
             return None
 
-        amount = _safe_float(
-            _first_non_empty(
-                item.get("amount"),
-                item.get("amount_aggregated"),
-                item.get("stock_amount"),
-                item.get("quantity"),
-            )
-        )
+        amount, amount_source = MealieGrocyBridgeCoordinator._extract_stock_amount(item)
         if amount <= 0:
             return None
 
@@ -421,13 +426,20 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         if isinstance(product_group, dict):
             product_group = product_group.get("name")
 
+        unit, unit_source = MealieGrocyBridgeCoordinator._extract_stock_unit(item)
+        if not unit:
+            unit = MealieGrocyBridgeCoordinator._resolve_stock_unit_by_id(item, quantity_unit_map)
+            if unit:
+                unit_source = "quantity_unit_map"
+
         return {
             "name": product_name,
             "amount": amount,
-            "unit": (
-                MealieGrocyBridgeCoordinator._extract_stock_unit(item)
-                or MealieGrocyBridgeCoordinator._resolve_stock_unit_by_id(item, quantity_unit_map)
-            ),
+            "amount_source": amount_source,
+            "unit": unit,
+            "unit_source": unit_source,
+            "qu_id_stock": item.get("qu_id_stock"),
+            "quantity_unit_stock_id": item.get("quantity_unit_stock_id"),
             "best_before_date": item.get("best_before_date"),
             "product_group": str(product_group or "").strip(),
             "location": str(

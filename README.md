@@ -24,6 +24,11 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 
 ## ✨ Neu 
 
+- **Ab Version 0.2.6-beta.8**
+  - Notvorratskarte nutzt fuer Mengen und Einheiten jetzt vorrangig echte Grocy-Stock-Felder
+  - `stock_items` enthaelt zusaetzlich `amount_source` und `unit_source` zur Diagnose
+  - Abgelaufene Artikel werden in der Krisenvorsorge nicht mehr mitgerechnet
+  - Fehlzuordnungen bei kurzen Keywords und Instantnudeln wurden reduziert
 - **Strukturierte Zutaten-Objekte im Sensor:**
   - Zutaten werden nicht mehr als einfache Strings geliefert
   - Jede Zutat enthält nun:
