@@ -1051,6 +1051,28 @@ const EMERGENCY_CATEGORIES = [
   },
 ];
 
+const grainCategory = EMERGENCY_CATEGORIES.find((category) => category.id === "grain");
+if (grainCategory) {
+  grainCategory.alternatives = ["Vollkornbrot", "Knackebrot", "Zwieback", "Reis", "Nudeln", "Haferflocken", "Kartoffeln"];
+  grainCategory.keywords = [
+    "brot",
+    "vollkornbrot",
+    "knackebrot",
+    "zwieback",
+    "reis",
+    "nudel",
+    "hafer",
+    "haferflocken",
+    "getreideflocken",
+    "muesli",
+    "musli",
+    "griess",
+    "gries",
+    "mehl",
+    "kartoffel",
+  ];
+}
+
 const fatsCategory = EMERGENCY_CATEGORIES.find((category) => category.id === "fats");
 if (fatsCategory) {
   fatsCategory.alternatives = ["Olivenöl", "Sonnenblumenöl", "Rapsöl", "Butter", "Margarine", "Nussmus"];
@@ -1112,6 +1134,15 @@ const EMERGENCY_UNITLESS_ESTIMATES = {
     { pattern: /\b(mineralwasser|trinkwasser|saft|cola|limonade|schorle|getrank|getraenk)\b/, liters: 1 },
   ],
 };
+
+EMERGENCY_UNITLESS_ESTIMATES.grain = [
+  { pattern: /\b(mehl)\b/, grams: 1000 },
+  { pattern: /\b(reis|graupen|grie|hafer|muesli|musli)\b/, grams: 500 },
+  { pattern: /\b(nudel|spaghetti|fusilli|farfalle|penne|rigate|tortiglioni|lasagneplatten|spatzle|spaetzle|gnocchi)\b/, grams: 500 },
+  { pattern: /\b(kartoffelpuree|kartoffelbrei)\b/, grams: 250 },
+  { pattern: /\b(vollkornbrot|brot|knackebrot|zwieback)\b/, grams: 250 },
+  { pattern: /\b(kartoffel)\b/, grams: 1000 },
+];
 
 class MealieGrocyEmergencyCardEditor extends LitElement {
   static get properties() {
@@ -1706,6 +1737,8 @@ class MealieGrocyEmergencyCard extends LitElement {
 
     if (category.id === "grain") {
       if (name.includes("kartoffelsnacks") || name.includes("chips")) return true;
+      if (/(asia nudeln|ramen|ramyun|chapaghetti|yumyum|yum yum|instant nudeln|instant noodle|cup noodle|5 minuten terrine|snack nudeln)/.test(name)) return true;
+      if (/(wrap|tortilla|durum|taco)/.test(name)) return true;
     }
 
     if (category.id === "protein") {

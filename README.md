@@ -24,6 +24,10 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 
 ## ✨ Neu 
 
+- **Ab Version 0.2.6-beta.10**
+  - Notvorratskarte zaehlt bei Grundnahrungsmitteln jetzt konservativer und naeher an der offiziellen PDF-Vorlage
+  - Instant-/Snackprodukte wie Ramen, YumYum oder Chapaghetti zaehlen nicht mehr als verlaessliche Notfall-Grundversorgung
+  - Oele werden robuster erkannt und Fonds/Bruehen nicht mehr als Protein fehlklassifiziert
 - **Ab Version 0.2.6-beta.9**
   - Notvorratskarte zeigt jetzt die geladene Karten-/Integrationsversion direkt im Footer
   - "Vollstaendig abgedeckt" zeigt Prozent und Tage der knappsten Kategorie
