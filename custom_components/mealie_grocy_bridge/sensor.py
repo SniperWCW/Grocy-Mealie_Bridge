@@ -330,19 +330,70 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         if isinstance(product_quantity_unit, dict):
             product_quantity_unit = product_quantity_unit.get("name")
 
-        return _normalize_unit(
+        explicit_stock_unit = _normalize_unit(
             _first_non_empty(
                 item.get("quantity_unit_stock_name"),
                 quantity_unit_stock,
-                product.get("qu_name") if isinstance(product, dict) else None,
-                product.get("quantity_unit_purchase_name") if isinstance(product, dict) else None,
+                product.get("quantity_unit_stock_name") if isinstance(product, dict) else None,
                 product_quantity_unit,
-                item.get("qu_name"),
+            )
+        )
+        if explicit_stock_unit:
+            return explicit_stock_unit
+
+        return _normalize_unit(
+            _first_non_empty(
+                product.get("qu_name") if isinstance(product, dict) else None,
+                product.get("default_quantity_unit_consume_name") if isinstance(product, dict) else None,
             )
         )
 
     @staticmethod
-    def _extract_stock_snapshot(item):
+    def _build_quantity_unit_map(quantity_units):
+        """Build an id-to-name map from Grocy quantity units."""
+        unit_map = {}
+        for unit in quantity_units or []:
+            if not isinstance(unit, dict):
+                continue
+            unit_id = unit.get("id")
+            unit_name = unit.get("name")
+            if unit_id is None or not unit_name:
+                continue
+            try:
+                unit_map[int(unit_id)] = _normalize_unit(unit_name)
+            except (TypeError, ValueError):
+                continue
+        return unit_map
+
+    @staticmethod
+    def _resolve_stock_unit_by_id(item, quantity_unit_map):
+        """Resolve stock unit name from Grocy quantity unit ids."""
+        if not quantity_unit_map or not isinstance(item, dict):
+            return ""
+
+        product = item.get("product") if isinstance(item, dict) else {}
+        candidate_ids = [
+            item.get("qu_id_stock"),
+            item.get("quantity_unit_stock_id"),
+            product.get("qu_id_stock") if isinstance(product, dict) else None,
+            product.get("qu_id_purchase") if isinstance(product, dict) else None,
+            product.get("qu_id_consume") if isinstance(product, dict) else None,
+            item.get("qu_id"),
+        ]
+
+        for candidate_id in candidate_ids:
+            try:
+                normalized_id = int(candidate_id)
+            except (TypeError, ValueError):
+                continue
+            resolved_unit = quantity_unit_map.get(normalized_id)
+            if resolved_unit:
+                return resolved_unit
+
+        return ""
+
+    @staticmethod
+    def _extract_stock_snapshot(item, quantity_unit_map=None):
         """Build a normalized stock snapshot for the emergency supply card."""
         if not isinstance(item, dict):
             return None
@@ -373,7 +424,10 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         return {
             "name": product_name,
             "amount": amount,
-            "unit": MealieGrocyBridgeCoordinator._extract_stock_unit(item),
+            "unit": (
+                MealieGrocyBridgeCoordinator._extract_stock_unit(item)
+                or MealieGrocyBridgeCoordinator._resolve_stock_unit_by_id(item, quantity_unit_map)
+            ),
             "best_before_date": item.get("best_before_date"),
             "product_group": str(product_group or "").strip(),
             "location": str(
@@ -516,6 +570,17 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         except Exception as err:
             raise UpdateFailed(f"Verbindung zu Grocy fehlgeschlagen: {err}")
 
+        quantity_unit_map = {}
+        try:
+            async with self.session.get(f"{grocy_url}/api/objects/quantity_units", headers=grocy_headers, timeout=15) as res:
+                if res.status == 200:
+                    quantity_units_data = await res.json()
+                    if isinstance(quantity_units_data, dict):
+                        quantity_units_data = quantity_units_data.get("items", quantity_units_data.get("data", []))
+                    quantity_unit_map = self._build_quantity_unit_map(quantity_units_data)
+        except Exception as err:
+            _LOGGER.debug("Grocy Mengeneinheiten konnten nicht geladen werden: %s", err)
+
         grocy_products_map = {}
         stock_items = []
         in_one_month = today + timedelta(days=30)
@@ -559,7 +624,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                         )
                     }
 
-                    stock_snapshot = self._extract_stock_snapshot(item)
+                    stock_snapshot = self._extract_stock_snapshot(item, quantity_unit_map)
                     if stock_snapshot:
                         stock_snapshot["status"] = ingredient_status
                         stock_items.append(stock_snapshot)
