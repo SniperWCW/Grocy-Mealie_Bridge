@@ -9,6 +9,7 @@ from urllib.parse import quote
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import MATCH_ALL
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, CoordinatorEntity, UpdateFailed
@@ -126,7 +127,10 @@ async def async_setup_entry(
     # hass.data[DOMAIN]["coordinator"] = coordinator Update 18.05.2026
     hass.data[DOMAIN][entry.entry_id]["coordinator"] = coordinator
 
-    async_add_entities([MealieGrocySensor(coordinator, entry.entry_id)], True)
+    integration_version = await hass.async_add_executor_job(_read_integration_version)
+    async_add_entities(
+        [MealieGrocySensor(coordinator, entry.entry_id, integration_version)], True
+    )
 
 
 class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
@@ -872,12 +876,24 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
 class MealieGrocySensor(CoordinatorEntity, SensorEntity):
     """Representation of the Mealie Grocy Bridge Sensor."""
 
-    def __init__(self, coordinator: MealieGrocyBridgeCoordinator, entry_id: str) -> None:
+    # The recipe, meal-plan and stock payloads are UI data and can become large.
+    # Keep them available in the live state machine, but do not persist them in
+    # Recorder history. This avoids the 16 KiB Recorder attribute limit and
+    # unnecessary database growth.
+    _unrecorded_attributes = frozenset({MATCH_ALL})
+
+    def __init__(
+        self,
+        coordinator: MealieGrocyBridgeCoordinator,
+        entry_id: str,
+        integration_version: str,
+    ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{entry_id}_suggestions"
         self._attr_name = "Mealie Grocy Kochvorschläge"
         self._attr_icon = "mdi:chef-hat"
+        self._integration_version = integration_version
 
     @property
     def native_value(self) -> int:
@@ -892,5 +908,5 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
             "current_week_mealplan": self.coordinator.mealplan,
             "current_week_range": self.coordinator.mealplan_range,
             "stock_items": self.coordinator.stock_items,
-            "integration_version": _read_integration_version(),
+            "integration_version": self._integration_version,
         }
