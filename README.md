@@ -24,6 +24,12 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 
 ## ✨ Neu 
 
+- **Ab Version 0.2.6-beta.12**
+  - Aufteilung der bisher gebündelten Daten auf drei Sensoren für Rezepte/Essensplanung, Bestand und Notvorrat
+  - Der Kochvorschlags-Sensor enthält keinen Grocy-Gesamtbestand mehr und erzeugt dadurch deutlich kleinere Attribute
+  - Der Bestands-Sensor löst die tatsächlichen aktuellen Grocy-Lagerorte je Produkt auf; bei älteren Grocy-Versionen wird auf den Produkt-Standardlagerort zurückgefallen
+  - Neue Bestandskarte gruppiert Artikel nach Lagerort und zeigt Menge, Einheit und MHD-Status
+  - Die Notvorratskarte verwendet standardmäßig den kompakten Vorrats-Sensor
 - **Ab Version 0.2.6-beta.11**
   - Gesamtansicht der Notvorratskarte zeigt jetzt den mittleren Abdeckungswert aller Kategorien als Gesamt-Prozent
   - Gesamtansicht zeigt zusaetzlich die durchschnittliche Reichweite in Tagen statt nur den schlechtesten Einzelwert
@@ -96,18 +102,38 @@ Liest das Attribut `missingIngredients` des ausgewählten Rezept-Index aus und f
 
 Die Integration basiert auf einer zentralen, schlanken Systemarchitektur.
 
-### Sensor: `sensor.mealie_grocy_kochvorschlage`
+### Sensoren
 
-Der Sensor läuft über einen `DataUpdateCoordinator` und aktualisiert standardmäßig alle **30 Minuten**.
+Alle drei Sensoren verwenden denselben `DataUpdateCoordinator` und aktualisieren standardmäßig alle **30 Minuten**. Es werden also keine drei vollständigen Datenabrufe ausgeführt.
 
-Er stellt folgende Attribute bereit:
+#### `sensor.mealie_grocy_kochvorschlage`
 
-- `recipes` → Vollständige Rezeptliste mit Matching-Informationen
-- `markdown_suggestions` → optionaler Text-Output
-- `matchingIngredients` → strukturierte Zutatenliste mit Status
-- `missingIngredients` → fehlende Zutaten pro Rezept
-- `basicIngredients` → bereinigte Basiszutaten
-- `hasExpiring` → Hinweis auf kritische Haltbarkeit
+Enthält ausschließlich Rezepte und Essensplanung:
+
+- `recipes` → Rezeptvorschläge mit Matching-, Zutaten- und MHD-Informationen
+- `mealplan` → Einträge des konfigurierten Mealie-Speiseplan-Zeitraums
+- `mealplan_range` → Beginn, Ende, Modus und Bezeichnung des Zeitraums
+
+Die bisher zusätzlich enthaltenen Attribute `stock_items`, `current_week_mealplan` und `current_week_range` wurden entfernt. `mealplan` und `mealplan_range` ersetzen die beiden doppelten `current_week_*`-Attribute.
+
+#### `sensor.mealie_grocy_bestand`
+
+Enthält den vollständigen Grocy-Bestand für Bestandsansichten:
+
+- `items` → Artikel mit Menge, Einheit, MHD-Status, `location`, `location_id` und `location_source`
+- `locations` → kompakte Zähler je Lagerort
+- `location_count`, `product_count`, `expiring_count`, `expired_count` → direkte Zusammenfassungen
+
+`location_source` hat den Wert `current_stock`, wenn der tatsächliche aktuelle Lagerort aus Grocy aufgelöst wurde. `product_default` ist der kontrollierte Fallback für ältere oder nicht erreichbare Grocy-Endpunkte. Nicht zugeordnete Artikel werden explizit unter `Nicht zugeordnet` einsortiert.
+
+#### `sensor.mealie_grocy_vorrat`
+
+Enthält eine bewusst kompakte Auswahl der Bestandsfelder, welche die Krisenvorsorge-Karte benötigt:
+
+- `stock_items` → Name, Menge, Einheit, Status, Produktgruppe und Lagerort
+- `total_count`, `expiring_count`, `expired_count` → kompakte Zähler
+
+Der Zustand jedes Sensors ist jeweils eine Anzahl: Rezeptvorschläge, Bestandspositionen beziehungsweise für den Notvorrat nutzbare Produkte.
 
 ---
 
@@ -166,7 +192,7 @@ Die bestehende Frontend-Ressource enthaelt jetzt zusaetzlich eine zweite, getren
 
 ```yaml
 type: custom:mealie-grocy-emergency-card
-entity: sensor.mealie_grocy_kochvorschlage
+entity: sensor.mealie_grocy_vorrat
 adults: 2
 children: 1
 days: 10
@@ -183,6 +209,18 @@ Die Rezeptkarte bleibt unveraendert. Die neue Karte nutzt den bereits vorhandene
 Die Zielwerte orientieren sich an den BLE-Richtwerten fuer den Notvorrat.
 Mit `collapsible: true` kann die Karte direkt im Dashboard ein- und ausgeblendet werden.
 Mit `initially_collapsed: true` startet sie standardmaessig eingeklappt.
+
+### 5. Bestand nach Lagerorten
+
+Die neue Bestandskarte verwendet den eigenen Bestands-Sensor und gruppiert automatisch nach dem aktuellen Grocy-Lagerort:
+
+```yaml
+type: custom:mealie-grocy-inventory-card
+entity: sensor.mealie_grocy_bestand
+show_empty_location: true
+```
+
+Mit `show_empty_location: false` lassen sich Artikel ohne auflösbaren Lagerort ausblenden. Dieselbe Gruppierung kann für eigene Karten oder Automationen direkt aus `items[*].location` erzeugt werden; das kompakte Attribut `locations` eignet sich für Übersichten und Zähler.
 
 ---
 
