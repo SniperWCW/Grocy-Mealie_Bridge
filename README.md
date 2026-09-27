@@ -24,6 +24,11 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 
 ## ✨ Neu 
 
+- **Ab Version 0.2.9**
+  - Bestandssuche direkt in der Lagerortkarte, ohne zusätzliche API-Abfragen
+  - Durchsucht Artikelname, Lagerort, Produktgruppe, Einheit, Menge, MHD und Status
+  - Zeigt bei aktiver Suche Trefferzahl und Gesamtzahl an
+  - Robusteres Laden bei versehentlich mehrfach registrierter Frontend-Ressource
 - **Ab Version 0.2.8**
   - Aufteilung der bisher gebündelten Daten auf drei Sensoren für Rezepte/Essensplanung, Bestand und Notvorrat
   - Der Kochvorschlags-Sensor enthält keinen Grocy-Gesamtbestand mehr und erzeugt dadurch deutlich kleinere Attribute
@@ -221,6 +226,8 @@ show_empty_location: true
 ```
 
 Mit `show_empty_location: false` lassen sich Artikel ohne auflösbaren Lagerort ausblenden. Dieselbe Gruppierung kann für eigene Karten oder Automationen direkt aus `items[*].location` erzeugt werden; das kompakte Attribut `locations` eignet sich für Übersichten und Zähler.
+
+Das Suchfeld ist immer sichtbar und filtert die bereits geladenen Bestandsdaten sofort. Neben Artikelnamen können unter anderem Lagerorte sowie die Begriffe `abgelaufen`, `läuft bald ab` und `normal` gesucht werden.
 
 ---
 

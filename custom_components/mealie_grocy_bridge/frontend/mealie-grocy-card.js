@@ -74,7 +74,9 @@ class MealieGrocyCardEditor extends LitElement {
     }));
   }
 }
-customElements.define("mealie-grocy-card-editor", MealieGrocyCardEditor);
+if (!customElements.get("mealie-grocy-card-editor")) {
+  customElements.define("mealie-grocy-card-editor", MealieGrocyCardEditor);
+}
 
 class MealieGrocyCard extends LitElement {
   static get properties() {
@@ -954,7 +956,9 @@ class MealieGrocyCard extends LitElement {
   };
 }
 
-customElements.define("mealie-grocy-card", MealieGrocyCard);
+if (!customElements.get("mealie-grocy-card")) {
+  customElements.define("mealie-grocy-card", MealieGrocyCard);
+}
 
 const EMERGENCY_SOURCE_URL = "https://www.ernaehrungsvorsorge.de/private-vorsorge/notvorrat/vorratskalkulator";
 const DEFAULT_CHILD_FOOD_FACTOR = 0.7;
@@ -1208,7 +1212,9 @@ class MealieGrocyEmergencyCardEditor extends LitElement {
     }));
   }
 }
-customElements.define("mealie-grocy-emergency-card-editor", MealieGrocyEmergencyCardEditor);
+if (!customElements.get("mealie-grocy-emergency-card-editor")) {
+  customElements.define("mealie-grocy-emergency-card-editor", MealieGrocyEmergencyCardEditor);
+}
 
 class MealieGrocyEmergencyCard extends LitElement {
   static get properties() {
@@ -1916,7 +1922,9 @@ class MealieGrocyEmergencyCard extends LitElement {
   }
 }
 
-customElements.define("mealie-grocy-emergency-card", MealieGrocyEmergencyCard);
+if (!customElements.get("mealie-grocy-emergency-card")) {
+  customElements.define("mealie-grocy-emergency-card", MealieGrocyEmergencyCard);
+}
 
 class MealieGrocyInventoryCardEditor extends LitElement {
   static get properties() {
@@ -1953,11 +1961,18 @@ class MealieGrocyInventoryCardEditor extends LitElement {
   }
 }
 
-customElements.define("mealie-grocy-inventory-card-editor", MealieGrocyInventoryCardEditor);
+if (!customElements.get("mealie-grocy-inventory-card-editor")) {
+  customElements.define("mealie-grocy-inventory-card-editor", MealieGrocyInventoryCardEditor);
+}
 
 class MealieGrocyInventoryCard extends LitElement {
   static get properties() {
-    return { hass: {}, config: {} };
+    return { hass: {}, config: {}, _searchTerm: { type: String } };
+  }
+
+  constructor() {
+    super();
+    this._searchTerm = "";
   }
 
   static getConfigElement() {
@@ -1986,6 +2001,14 @@ class MealieGrocyInventoryCard extends LitElement {
       .total { min-width: 54px; text-align: center; padding: 8px 12px; border-radius: 14px; background: var(--secondary-background-color); }
       .total strong { display: block; font-size: 1.2rem; }
       .total span { color: var(--secondary-text-color); font-size: 0.72rem; }
+      .search { display: flex; align-items: center; gap: 9px; margin-bottom: 18px; padding: 0 12px; border: 1px solid var(--divider-color); border-radius: 12px; background: var(--secondary-background-color); }
+      .search:focus-within { border-color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color); }
+      .search ha-icon { color: var(--secondary-text-color); --mdc-icon-size: 20px; }
+      .search input { flex: 1; min-width: 0; height: 42px; border: 0; outline: 0; background: transparent; color: var(--primary-text-color); font: inherit; }
+      .search input::placeholder { color: var(--secondary-text-color); opacity: 1; }
+      .search-clear { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--secondary-text-color); cursor: pointer; }
+      .search-clear:hover, .search-clear:focus-visible { background: var(--divider-color); color: var(--primary-text-color); outline: none; }
+      .search-clear ha-icon { --mdc-icon-size: 18px; }
       .locations { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
       .location { border: 1px solid var(--divider-color); border-radius: 14px; overflow: hidden; background: var(--card-background-color); }
       .location-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; background: var(--secondary-background-color); }
@@ -2012,8 +2035,12 @@ class MealieGrocyInventoryCard extends LitElement {
     if (!stateObj) return html`<ha-card>Bestands-Sensor ${entityId} nicht gefunden.</ha-card>`;
 
     const items = Array.isArray(stateObj.attributes?.items) ? stateObj.attributes.items : [];
-    const grouped = this._groupByLocation(items)
-      .filter((group) => this.config.show_empty_location !== false || group.name !== "Nicht zugeordnet");
+    const eligibleItems = items.filter(
+      (item) => this.config.show_empty_location !== false || item?.location !== "Nicht zugeordnet"
+    );
+    const filteredItems = this._filterItems(eligibleItems);
+    const grouped = this._groupByLocation(filteredItems);
+    const hasSearch = Boolean(this._searchTerm.trim());
 
     return html`
       <ha-card>
@@ -2022,7 +2049,25 @@ class MealieGrocyInventoryCard extends LitElement {
             <div class="eyebrow"><ha-icon icon="mdi:warehouse"></ha-icon> Grocy-Bestand</div>
             <h2>Bestand nach Lagerort</h2>
           </div>
-          <div class="total"><strong>${items.length}</strong><span>Positionen</span></div>
+          <div class="total">
+            <strong>${filteredItems.length}</strong>
+            <span>${hasSearch ? `von ${eligibleItems.length}` : "Positionen"}</span>
+          </div>
+        </div>
+        <div class="search">
+          <ha-icon icon="mdi:magnify"></ha-icon>
+          <input
+            type="search"
+            placeholder="Artikel, Lagerort, Gruppe oder Status suchen …"
+            aria-label="Bestand durchsuchen"
+            .value=${this._searchTerm}
+            @input=${this._handleSearchInput}
+          >
+          ${hasSearch ? html`
+            <button class="search-clear" type="button" title="Suche zurücksetzen" aria-label="Suche zurücksetzen" @click=${this._clearSearch}>
+              <ha-icon icon="mdi:close"></ha-icon>
+            </button>
+          ` : ""}
         </div>
         ${grouped.length ? html`
           <div class="locations">
@@ -2051,9 +2096,56 @@ class MealieGrocyInventoryCard extends LitElement {
               </section>
             `)}
           </div>
-        ` : html`<div class="empty">Aktuell ist kein Bestand verfügbar.</div>`}
+        ` : html`
+          <div class="empty">
+            ${hasSearch ? `Keine passenden Artikel für „${this._searchTerm.trim()}“ gefunden.` : "Aktuell ist kein Bestand verfügbar."}
+          </div>
+        `}
       </ha-card>
     `;
+  }
+
+  _handleSearchInput(event) {
+    this._searchTerm = event?.target?.value || "";
+  }
+
+  _clearSearch() {
+    this._searchTerm = "";
+  }
+
+  _filterItems(items) {
+    const searchTerm = this._normalizeSearchText(this._searchTerm);
+    if (!searchTerm) return items;
+
+    const statusLabels = {
+      expired: "abgelaufen",
+      expiring: "läuft bald ab laeuft bald ab bald fällig bald faellig",
+      normal: "normal haltbar",
+    };
+    return items.filter((item) => {
+      const searchableText = [
+        item?.name,
+        item?.location,
+        item?.product_group,
+        item?.unit,
+        item?.status,
+        statusLabels[item?.status],
+        item?.best_before_date,
+        item?.best_before_date ? this._formatDate(item.best_before_date) : null,
+        item?.amount,
+        item?.amount !== undefined && item?.amount !== null ? this._formatAmount(item.amount) : null,
+      ].filter((value) => value !== undefined && value !== null).join(" ");
+      return this._normalizeSearchText(searchableText).includes(searchTerm);
+    });
+  }
+
+  _normalizeSearchText(value) {
+    return String(value || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/ß/g, "ss")
+      .trim();
   }
 
   _groupByLocation(items) {
@@ -2084,7 +2176,9 @@ class MealieGrocyInventoryCard extends LitElement {
   }
 }
 
-customElements.define("mealie-grocy-inventory-card", MealieGrocyInventoryCard);
+if (!customElements.get("mealie-grocy-inventory-card")) {
+  customElements.define("mealie-grocy-inventory-card", MealieGrocyInventoryCard);
+}
 
 window.customCards = window.customCards || [];
 [
