@@ -40,6 +40,8 @@ DEFAULT_BASICS = [
     "petersilie", "schnittlauch", "thymian"
 ]
 
+UNKNOWN_LOCATION = "Nicht zugeordnet"
+
 UNIT_ALIASES = {
     "g": "g",
     "gramm": "g",
@@ -129,7 +131,16 @@ async def async_setup_entry(
 
     integration_version = await hass.async_add_executor_job(_read_integration_version)
     async_add_entities(
-        [MealieGrocySensor(coordinator, entry.entry_id, integration_version)], True
+        [
+            MealieGrocySensor(coordinator, entry.entry_id, integration_version),
+            MealieGrocyInventorySensor(coordinator, entry.entry_id, integration_version),
+            MealieGrocyEmergencySupplySensor(
+                coordinator,
+                entry.entry_id,
+                integration_version,
+            ),
+        ],
+        True,
     )
 
 
@@ -143,6 +154,8 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         self.mealplan = []
         self.mealplan_range = {"start": None, "end": None, "mode": None, "label": None}
         self.stock_items = []
+        self.inventory_items = []
+        self.inventory_locations = []
         
         super().__init__(
             hass,
@@ -385,6 +398,72 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         return unit_map
 
     @staticmethod
+    def _build_id_name_map(objects):
+        """Build a numeric id-to-name map from a Grocy object response."""
+        object_map = {}
+        for item in objects or []:
+            if not isinstance(item, dict):
+                continue
+            object_id = item.get("id")
+            name = str(item.get("name") or "").strip()
+            if object_id is None or not name:
+                continue
+            try:
+                object_map[int(object_id)] = name
+            except (TypeError, ValueError):
+                continue
+        return object_map
+
+    @staticmethod
+    def _extract_product_id(item):
+        """Extract a product id from the different Grocy stock payload shapes."""
+        if not isinstance(item, dict):
+            return None
+        product = item.get("product")
+        candidates = [
+            item.get("product_id"),
+            product.get("id") if isinstance(product, dict) else None,
+        ]
+        for candidate in candidates:
+            try:
+                return int(candidate)
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    @staticmethod
+    def _extract_location_id(item):
+        """Extract the best available location id from a Grocy payload."""
+        if not isinstance(item, dict):
+            return None
+
+        product = item.get("product")
+        location = item.get("location")
+        product_location = product.get("location") if isinstance(product, dict) else None
+        candidates = [
+            item.get("location_id"),
+            item.get("current_location_id"),
+            location.get("id") if isinstance(location, dict) else None,
+            product.get("location_id") if isinstance(product, dict) else None,
+            product_location.get("id") if isinstance(product_location, dict) else None,
+        ]
+        for candidate in candidates:
+            try:
+                return int(candidate)
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    @staticmethod
+    def _extract_api_items(raw_data):
+        """Normalize common Grocy list response shapes."""
+        if isinstance(raw_data, list):
+            return raw_data
+        if isinstance(raw_data, dict):
+            return raw_data.get("items", raw_data.get("data", []))
+        return []
+
+    @staticmethod
     def _resolve_stock_unit_by_id(item, quantity_unit_map):
         """Resolve stock unit name from Grocy quantity unit ids."""
         if not quantity_unit_map or not isinstance(item, dict):
@@ -422,7 +501,12 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         return 0.0, ""
 
     @staticmethod
-    def _extract_stock_snapshot(item, quantity_unit_map=None):
+    def _extract_stock_snapshot(
+        item,
+        quantity_unit_map=None,
+        location_map=None,
+        product_group_map=None,
+    ):
         """Build a normalized stock snapshot for the emergency supply card."""
         if not isinstance(item, dict):
             return None
@@ -442,6 +526,12 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         product_group = product.get("product_group")
         if isinstance(product_group, dict):
             product_group = product_group.get("name")
+        if not product_group:
+            try:
+                product_group_id = int(product.get("product_group_id"))
+            except (TypeError, ValueError):
+                product_group_id = None
+            product_group = (product_group_map or {}).get(product_group_id)
 
         unit, unit_source = MealieGrocyBridgeCoordinator._extract_stock_unit(item)
         if not unit:
@@ -449,7 +539,22 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
             if unit:
                 unit_source = "quantity_unit_map"
 
+        location_id = MealieGrocyBridgeCoordinator._extract_location_id(item)
+        embedded_location = _first_non_empty(
+            item.get("location_name"),
+            item.get("location", {}).get("name") if isinstance(item.get("location"), dict) else None,
+            product.get("location", {}).get("name")
+            if isinstance(product.get("location"), dict)
+            else None,
+        )
+        location_name = str(
+            embedded_location
+            or (location_map or {}).get(location_id)
+            or UNKNOWN_LOCATION
+        ).strip()
+
         return {
+            "product_id": MealieGrocyBridgeCoordinator._extract_product_id(item),
             "name": product_name,
             "amount": amount,
             "amount_source": amount_source,
@@ -459,14 +564,133 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
             "quantity_unit_stock_id": item.get("quantity_unit_stock_id"),
             "best_before_date": item.get("best_before_date"),
             "product_group": str(product_group or "").strip(),
-            "location": str(
-                _first_non_empty(
-                    item.get("location_name"),
-                    item.get("location", {}).get("name") if isinstance(item.get("location"), dict) else None,
-                )
-                or ""
-            ).strip(),
+            "location_id": location_id,
+            "location": location_name,
+            "location_source": "product_default" if location_id is not None else "unknown",
         }
+
+    async def _fetch_location_entries(self, semaphore, location_id, grocy_url, headers):
+        """Fetch all current stock entries for one location."""
+        async with semaphore:
+            try:
+                async with self.session.get(
+                    f"{grocy_url}/api/stock/locations/{location_id}/entries",
+                    headers=headers,
+                    timeout=10,
+                ) as response:
+                    if response.status == 200:
+                        return location_id, self._extract_api_items(await response.json())
+                    _LOGGER.debug(
+                        "Grocy-Bestand fuer Lagerort %s konnte nicht geladen werden (%s)",
+                        location_id,
+                        response.status,
+                    )
+            except Exception as err:
+                _LOGGER.debug(
+                    "Grocy-Bestand fuer Lagerort %s konnte nicht geladen werden: %s",
+                    location_id,
+                    err,
+                )
+            return location_id, []
+
+    @staticmethod
+    def _build_inventory_items(stock_items, product_locations, location_map, today=None):
+        """Expand aggregated Grocy stock into one frontend item per current location."""
+        inventory_items = []
+        expiration_limit = today + timedelta(days=30) if today else None
+
+        for stock_item in stock_items:
+            product_id = stock_item.get("product_id")
+            location_rows = product_locations.get(product_id, [])
+            resolved_rows = {}
+
+            for row in location_rows:
+                if not isinstance(row, dict):
+                    continue
+                amount = _safe_float(row.get("amount"))
+                if amount <= 0:
+                    continue
+                location_id = MealieGrocyBridgeCoordinator._extract_location_id(row)
+                location_name = str(
+                    _first_non_empty(
+                        row.get("location_name"),
+                        row.get("location", {}).get("name")
+                        if isinstance(row.get("location"), dict)
+                        else None,
+                        location_map.get(location_id),
+                    )
+                    or UNKNOWN_LOCATION
+                ).strip()
+                row_key = (location_id, location_name)
+                resolved = resolved_rows.setdefault(row_key, {"amount": 0.0, "dates": []})
+                resolved["amount"] += amount
+                best_before_date = str(row.get("best_before_date") or "").strip()
+                if best_before_date and not best_before_date.startswith("2999"):
+                    resolved["dates"].append(best_before_date)
+
+            if resolved_rows:
+                for (location_id, location_name), resolved in resolved_rows.items():
+                    best_before_date = min(resolved["dates"], default=stock_item.get("best_before_date"))
+                    status = stock_item.get("status", "normal")
+                    if today and best_before_date:
+                        try:
+                            parsed_date = datetime.strptime(str(best_before_date), "%Y-%m-%d").date()
+                            status = (
+                                "expired"
+                                if parsed_date < today
+                                else "expiring"
+                                if parsed_date <= expiration_limit
+                                else "normal"
+                            )
+                        except ValueError:
+                            pass
+                    inventory_items.append(
+                        {
+                            **stock_item,
+                            "amount": resolved["amount"],
+                            "amount_source": "stock_location.amount",
+                            "best_before_date": best_before_date,
+                            "status": status,
+                            "location_id": location_id,
+                            "location": location_name,
+                            "location_source": "current_stock",
+                        }
+                    )
+                continue
+
+            inventory_items.append(stock_item.copy())
+
+        inventory_items.sort(
+            key=lambda entry: (
+                str(entry.get("location") or UNKNOWN_LOCATION).casefold(),
+                str(entry.get("name") or "").casefold(),
+            )
+        )
+        return inventory_items
+
+    @staticmethod
+    def _build_location_summaries(inventory_items):
+        """Create compact per-location counters without duplicating every stock item."""
+        locations = {}
+        for item in inventory_items:
+            location_name = str(item.get("location") or UNKNOWN_LOCATION).strip()
+            summary = locations.setdefault(
+                location_name,
+                {
+                    "name": location_name,
+                    "item_count": 0,
+                    "normal_count": 0,
+                    "expiring_count": 0,
+                    "expired_count": 0,
+                },
+            )
+            summary["item_count"] += 1
+            status = str(item.get("status") or "normal")
+            status_key = f"{status}_count"
+            if status_key in summary:
+                summary[status_key] += 1
+
+        return sorted(locations.values(), key=lambda location: location["name"].casefold())
 
     async def _fetch_recipe_details(self, semaphore, slug, mealie_url, headers):
         """Fetch full details for a single recipe with concurrency limit and pacing."""
@@ -604,11 +828,39 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
             async with self.session.get(f"{grocy_url}/api/objects/quantity_units", headers=grocy_headers, timeout=15) as res:
                 if res.status == 200:
                     quantity_units_data = await res.json()
-                    if isinstance(quantity_units_data, dict):
-                        quantity_units_data = quantity_units_data.get("items", quantity_units_data.get("data", []))
-                    quantity_unit_map = self._build_quantity_unit_map(quantity_units_data)
+                    quantity_unit_map = self._build_quantity_unit_map(
+                        self._extract_api_items(quantity_units_data)
+                    )
         except Exception as err:
             _LOGGER.debug("Grocy Mengeneinheiten konnten nicht geladen werden: %s", err)
+
+        location_map = {}
+        try:
+            async with self.session.get(
+                f"{grocy_url}/api/objects/locations",
+                headers=grocy_headers,
+                timeout=15,
+            ) as res:
+                if res.status == 200:
+                    location_map = self._build_id_name_map(
+                        self._extract_api_items(await res.json())
+                    )
+        except Exception as err:
+            _LOGGER.debug("Grocy Lagerorte konnten nicht geladen werden: %s", err)
+
+        product_group_map = {}
+        try:
+            async with self.session.get(
+                f"{grocy_url}/api/objects/product_groups",
+                headers=grocy_headers,
+                timeout=15,
+            ) as res:
+                if res.status == 200:
+                    product_group_map = self._build_id_name_map(
+                        self._extract_api_items(await res.json())
+                    )
+        except Exception as err:
+            _LOGGER.debug("Grocy Produktgruppen konnten nicht geladen werden: %s", err)
 
         grocy_products_map = {}
         stock_items = []
@@ -653,13 +905,52 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                         )
                     }
 
-                    stock_snapshot = self._extract_stock_snapshot(item, quantity_unit_map)
+                    stock_snapshot = self._extract_stock_snapshot(
+                        item,
+                        quantity_unit_map,
+                        location_map,
+                        product_group_map,
+                    )
                     if stock_snapshot:
                         stock_snapshot["status"] = ingredient_status
                         stock_items.append(stock_snapshot)
 
         stock_items.sort(key=lambda entry: entry["name"].lower())
         self.stock_items = stock_items
+
+        location_semaphore = asyncio.Semaphore(10)
+        location_entry_results = await asyncio.gather(
+            *[
+                self._fetch_location_entries(
+                    location_semaphore,
+                    location_id,
+                    grocy_url,
+                    grocy_headers,
+                )
+                for location_id in sorted(location_map)
+            ],
+            return_exceptions=True,
+        )
+        product_locations = {}
+        for result in location_entry_results:
+            if isinstance(result, Exception):
+                continue
+            location_id, rows = result
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                product_id = self._extract_product_id(row)
+                if product_id is None:
+                    continue
+                normalized_row = {**row, "location_id": location_id}
+                product_locations.setdefault(product_id, []).append(normalized_row)
+        self.inventory_items = self._build_inventory_items(
+            stock_items,
+            product_locations,
+            location_map,
+            today,
+        )
+        self.inventory_locations = self._build_location_summaries(self.inventory_items)
 
 # =====================================================================
         # 4. MEALIE REZEPTE ABRUFEN
@@ -733,17 +1024,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
                         self._clean_basic_ingredient(text_low, matched_basic)
                     )
                     continue
-                    # REINIGUNGS-LOGIK FÜR BASICS:
-                    cleaned_text = re.sub(
-                        r'^\s*[\d½⅓¼⅕⅙⅛.,\s]+\s*(tl|el|g|kg|ml|l|Liter|bund|stück|stck|zehe|zehen)?\s*',
-                        '',
-                        text_low,
-                        flags=re.IGNORECASE
-                    )
-                    cleaned_text = cleaned_text.replace('-', ' ').strip()
-                    
-                    final_basic_name = cleaned_text if len(cleaned_text) > 2 else matched_basic
-                    basic_ingredients_details.append(final_basic_name.strip().capitalize())
                 else:
                     if text_low:
                         relevant_ingredients.append(ing)
@@ -873,8 +1153,8 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         return results
 
 
-class MealieGrocySensor(CoordinatorEntity, SensorEntity):
-    """Representation of the Mealie Grocy Bridge Sensor."""
+class MealieGrocyBaseSensor(CoordinatorEntity, SensorEntity):
+    """Base sensor that keeps large UI payloads out of Recorder history."""
 
     # The recipe, meal-plan and stock payloads are UI data and can become large.
     # Keep them available in the live state machine, but do not persist them in
@@ -885,15 +1165,27 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
     def __init__(
         self,
         coordinator: MealieGrocyBridgeCoordinator,
+        integration_version: str,
+    ) -> None:
+        """Initialize common coordinator and version state."""
+        super().__init__(coordinator)
+        self._integration_version = integration_version
+
+
+class MealieGrocySensor(MealieGrocyBaseSensor):
+    """Expose recipe suggestions and meal planning data."""
+
+    def __init__(
+        self,
+        coordinator: MealieGrocyBridgeCoordinator,
         entry_id: str,
         integration_version: str,
     ) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
+        super().__init__(coordinator, integration_version)
         self._attr_unique_id = f"{entry_id}_suggestions"
         self._attr_name = "Mealie Grocy Kochvorschläge"
         self._attr_icon = "mdi:chef-hat"
-        self._integration_version = integration_version
 
     @property
     def native_value(self) -> int:
@@ -905,8 +1197,89 @@ class MealieGrocySensor(CoordinatorEntity, SensorEntity):
             "recipes": self.coordinator.data if self.coordinator.data else [],
             "mealplan": self.coordinator.mealplan,
             "mealplan_range": self.coordinator.mealplan_range,
-            "current_week_mealplan": self.coordinator.mealplan,
-            "current_week_range": self.coordinator.mealplan_range,
-            "stock_items": self.coordinator.stock_items,
+            "integration_version": self._integration_version,
+        }
+
+
+class MealieGrocyInventorySensor(MealieGrocyBaseSensor):
+    """Expose the Grocy inventory grouped by its current storage locations."""
+
+    def __init__(
+        self,
+        coordinator: MealieGrocyBridgeCoordinator,
+        entry_id: str,
+        integration_version: str,
+    ) -> None:
+        """Initialize the inventory sensor."""
+        super().__init__(coordinator, integration_version)
+        self._attr_unique_id = f"{entry_id}_inventory"
+        self._attr_name = "Mealie Grocy Bestand"
+        self._attr_icon = "mdi:warehouse"
+
+    @property
+    def native_value(self) -> int:
+        """Return the number of product/location combinations in stock."""
+        return len(self.coordinator.inventory_items)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return inventory details and compact location summaries."""
+        items = self.coordinator.inventory_items
+        return {
+            "items": items,
+            "locations": self.coordinator.inventory_locations,
+            "location_count": len(self.coordinator.inventory_locations),
+            "product_count": len(
+                {
+                    item.get("product_id") or f"name:{item.get('name')}"
+                    for item in items
+                    if item.get("product_id") is not None or item.get("name")
+                }
+            ),
+            "expiring_count": sum(item.get("status") == "expiring" for item in items),
+            "expired_count": sum(item.get("status") == "expired" for item in items),
+            "integration_version": self._integration_version,
+        }
+
+
+class MealieGrocyEmergencySupplySensor(MealieGrocyBaseSensor):
+    """Expose a compact stock view for emergency-supply evaluation."""
+
+    def __init__(
+        self,
+        coordinator: MealieGrocyBridgeCoordinator,
+        entry_id: str,
+        integration_version: str,
+    ) -> None:
+        """Initialize the emergency supply sensor."""
+        super().__init__(coordinator, integration_version)
+        self._attr_unique_id = f"{entry_id}_emergency_supply"
+        self._attr_name = "Mealie Grocy Vorrat"
+        self._attr_icon = "mdi:shield-check-outline"
+
+    @property
+    def native_value(self) -> int:
+        """Return the number of usable products considered for emergency supply."""
+        return sum(item.get("status") != "expired" for item in self.coordinator.stock_items)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return only fields required by the emergency-supply card."""
+        compact_items = [
+            {
+                "name": item.get("name"),
+                "amount": item.get("amount"),
+                "unit": item.get("unit"),
+                "status": item.get("status"),
+                "product_group": item.get("product_group"),
+                "location": item.get("location"),
+            }
+            for item in self.coordinator.stock_items
+        ]
+        return {
+            "stock_items": compact_items,
+            "total_count": len(compact_items),
+            "expiring_count": sum(item.get("status") == "expiring" for item in compact_items),
+            "expired_count": sum(item.get("status") == "expired" for item in compact_items),
             "integration_version": self._integration_version,
         }

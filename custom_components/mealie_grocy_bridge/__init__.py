@@ -512,14 +512,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 if hasattr(lovelace, "resources"):
                     resources = lovelace.resources
                     card_url = _get_card_resource_url()
-                    legacy_card_url = f"{URL_BASE}/{CARD_FILENAME}"
+                    card_url_base = f"{URL_BASE}/{CARD_FILENAME}"
+
+                    items = await resources.async_items()
+                    for item in items:
+                        item_url = str(item.get("url") or "")
+                        if (
+                            item_url.split("?", 1)[0] == card_url_base
+                            and item_url != card_url
+                            and item.get("id") is not None
+                        ):
+                            await resources.async_delete_item(item["id"])
 
                     items = await resources.async_items()
                     existing_urls = {item.get("url") for item in items}
-                    if legacy_card_url in existing_urls and card_url not in existing_urls:
-                        for item in items:
-                            if item.get("url") == legacy_card_url and item.get("id") is not None:
-                                await resources.async_delete_item(item["id"])
                     if card_url not in existing_urls:
                         await resources.async_create_item({"url": card_url, "type": "module"})
         else:

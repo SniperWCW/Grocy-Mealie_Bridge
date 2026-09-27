@@ -1490,7 +1490,7 @@ class MealieGrocyEmergencyCard extends LitElement {
 
   static getStubConfig() {
     return {
-      entity: "sensor.mealie_grocy_kochvorschlage",
+      entity: "sensor.mealie_grocy_vorrat",
       adults: 2,
       children: 0,
       days: 10,
@@ -1511,8 +1511,14 @@ class MealieGrocyEmergencyCard extends LitElement {
   render() {
     if (!this.hass || !this.config) return html``;
 
-    const entityId = this.config.entity || "sensor.mealie_grocy_kochvorschlage";
-    const stateObj = this.hass.states[entityId];
+    let entityId = this.config.entity || "sensor.mealie_grocy_vorrat";
+    let stateObj = this.hass.states[entityId];
+
+    // Existing dashboards may still point to the former combined sensor.
+    if (!stateObj?.attributes?.stock_items && entityId === "sensor.mealie_grocy_kochvorschlage") {
+      entityId = "sensor.mealie_grocy_vorrat";
+      stateObj = this.hass.states[entityId];
+    }
 
     if (!stateObj || !stateObj.attributes?.stock_items) {
       return html`<ha-card>Warte auf Grocy-Bestandsdaten...</ha-card>`;
@@ -1911,3 +1917,180 @@ class MealieGrocyEmergencyCard extends LitElement {
 }
 
 customElements.define("mealie-grocy-emergency-card", MealieGrocyEmergencyCard);
+
+class MealieGrocyInventoryCardEditor extends LitElement {
+  static get properties() {
+    return { hass: {}, _config: {} };
+  }
+
+  setConfig(config) {
+    this._config = config;
+  }
+
+  render() {
+    if (!this.hass || !this._config) return html``;
+    const schema = [
+      { name: "entity", label: "Bestands-Sensor", selector: { entity: { domain: "sensor" } } },
+      { name: "show_empty_location", label: "Nicht zugeordnete Artikel anzeigen", selector: { boolean: {} } },
+    ];
+    return html`
+      <ha-form
+        .hass=${this.hass}
+        .data=${this._config}
+        .schema=${schema}
+        .computeLabel=${(item) => item.label}
+        @value-changed=${this._valueChanged}
+      ></ha-form>
+    `;
+  }
+
+  _valueChanged(event) {
+    this.dispatchEvent(new CustomEvent("config-changed", {
+      detail: { config: event.detail.value },
+      bubbles: true,
+      composed: true,
+    }));
+  }
+}
+
+customElements.define("mealie-grocy-inventory-card-editor", MealieGrocyInventoryCardEditor);
+
+class MealieGrocyInventoryCard extends LitElement {
+  static get properties() {
+    return { hass: {}, config: {} };
+  }
+
+  static getConfigElement() {
+    return document.createElement("mealie-grocy-inventory-card-editor");
+  }
+
+  static getStubConfig() {
+    return {
+      entity: "sensor.mealie_grocy_bestand",
+      show_empty_location: true,
+    };
+  }
+
+  setConfig(config) {
+    if (!config) throw new Error("Eine Kartenkonfiguration ist erforderlich.");
+    this.config = config;
+  }
+
+  static get styles() {
+    return css`
+      :host { display: block; width: 100%; }
+      ha-card { padding: 20px; }
+      .header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+      .eyebrow { display: flex; align-items: center; gap: 8px; color: var(--secondary-text-color); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; }
+      h2 { margin: 5px 0 0; font-size: 1.35rem; }
+      .total { min-width: 54px; text-align: center; padding: 8px 12px; border-radius: 14px; background: var(--secondary-background-color); }
+      .total strong { display: block; font-size: 1.2rem; }
+      .total span { color: var(--secondary-text-color); font-size: 0.72rem; }
+      .locations { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+      .location { border: 1px solid var(--divider-color); border-radius: 14px; overflow: hidden; background: var(--card-background-color); }
+      .location-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; background: var(--secondary-background-color); }
+      .location-name { display: flex; align-items: center; gap: 8px; font-weight: 650; }
+      .count { color: var(--secondary-text-color); font-size: 0.78rem; }
+      .items { display: grid; }
+      .item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--divider-color); }
+      .item:first-child { border-top: 0; }
+      .name { min-width: 0; overflow-wrap: anywhere; }
+      .meta { margin-top: 2px; color: var(--secondary-text-color); font-size: 0.74rem; }
+      .amount { white-space: nowrap; font-variant-numeric: tabular-nums; }
+      .status { display: inline-block; margin-left: 6px; padding: 2px 6px; border-radius: 999px; font-size: 0.68rem; }
+      .status.expiring { color: var(--warning-color); background: color-mix(in srgb, var(--warning-color) 14%, transparent); }
+      .status.expired { color: var(--error-color); background: color-mix(in srgb, var(--error-color) 14%, transparent); }
+      .empty { color: var(--secondary-text-color); text-align: center; padding: 28px 12px; }
+      @media (max-width: 600px) { ha-card { padding: 14px; } .locations { grid-template-columns: 1fr; } }
+    `;
+  }
+
+  render() {
+    if (!this.hass || !this.config) return html``;
+    const entityId = this.config.entity || "sensor.mealie_grocy_bestand";
+    const stateObj = this.hass.states[entityId];
+    if (!stateObj) return html`<ha-card>Bestands-Sensor ${entityId} nicht gefunden.</ha-card>`;
+
+    const items = Array.isArray(stateObj.attributes?.items) ? stateObj.attributes.items : [];
+    const grouped = this._groupByLocation(items)
+      .filter((group) => this.config.show_empty_location !== false || group.name !== "Nicht zugeordnet");
+
+    return html`
+      <ha-card>
+        <div class="header">
+          <div>
+            <div class="eyebrow"><ha-icon icon="mdi:warehouse"></ha-icon> Grocy-Bestand</div>
+            <h2>Bestand nach Lagerort</h2>
+          </div>
+          <div class="total"><strong>${items.length}</strong><span>Positionen</span></div>
+        </div>
+        ${grouped.length ? html`
+          <div class="locations">
+            ${grouped.map((group) => html`
+              <section class="location">
+                <div class="location-head">
+                  <div class="location-name"><ha-icon icon="mdi:map-marker-outline"></ha-icon>${group.name}</div>
+                  <div class="count">${group.items.length} Artikel</div>
+                </div>
+                <div class="items">
+                  ${group.items.map((item) => html`
+                    <div class="item">
+                      <div class="name">
+                        ${item.name || "Unbekannter Artikel"}
+                        ${item.status === "expiring" || item.status === "expired" ? html`
+                          <span class="status ${item.status}">${item.status === "expired" ? "abgelaufen" : "läuft bald ab"}</span>
+                        ` : ""}
+                        ${item.best_before_date && !String(item.best_before_date).startsWith("2999") ? html`
+                          <div class="meta">MHD ${this._formatDate(item.best_before_date)}</div>
+                        ` : ""}
+                      </div>
+                      <div class="amount">${this._formatAmount(item.amount)} ${item.unit || ""}</div>
+                    </div>
+                  `)}
+                </div>
+              </section>
+            `)}
+          </div>
+        ` : html`<div class="empty">Aktuell ist kein Bestand verfügbar.</div>`}
+      </ha-card>
+    `;
+  }
+
+  _groupByLocation(items) {
+    const groups = new Map();
+    items.forEach((item) => {
+      const location = String(item?.location || "Nicht zugeordnet").trim() || "Nicht zugeordnet";
+      if (!groups.has(location)) groups.set(location, []);
+      groups.get(location).push(item);
+    });
+    return [...groups.entries()]
+      .map(([name, locationItems]) => ({
+        name,
+        items: [...locationItems].sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || ""), "de")),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "de"));
+  }
+
+  _formatAmount(value) {
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return "0";
+    return new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 }).format(amount);
+  }
+
+  _formatDate(value) {
+    const parts = String(value || "").slice(0, 10).split("-");
+    if (parts.length !== 3) return value;
+    return `${parts[2]}.${parts[1]}.${parts[0]}`;
+  }
+}
+
+customElements.define("mealie-grocy-inventory-card", MealieGrocyInventoryCard);
+
+window.customCards = window.customCards || [];
+[
+  { type: "mealie-grocy-card", name: "Mealie Grocy Rezepte & Essensplanung", description: "Kochvorschläge und Mealie-Speiseplan" },
+  { type: "mealie-grocy-inventory-card", name: "Mealie Grocy Bestand", description: "Grocy-Bestand gruppiert nach Lagerorten" },
+  { type: "mealie-grocy-emergency-card", name: "Mealie Grocy Vorrat", description: "Bewertung des Notvorrats" },
+].forEach((card) => {
+  if (!window.customCards.some((existing) => existing.type === card.type)) window.customCards.push(card);
+});
