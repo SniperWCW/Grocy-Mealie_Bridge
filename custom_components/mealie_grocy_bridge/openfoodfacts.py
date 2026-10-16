@@ -27,6 +27,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import CONF_GROCY_TOKEN, CONF_GROCY_URL, DOMAIN, REQUEST_TIMEOUT, normalize_base_url
 from .nutrition_plan import (
+    coverage_stats,
     filter_excluded_products,
     format_package,
     names_match,
@@ -201,6 +202,7 @@ async def _async_run(
         "skipped": [],
         "without_barcode": [],
         "excluded_groups": [],
+        "coverage": {},
         "errors": [],
     }
     grocy_url = normalize_base_url(runtime_data[CONF_GROCY_URL])
@@ -221,6 +223,7 @@ async def _async_run(
 
     products, excluded = filter_excluded_products(products, product_groups, exclude_groups)
     result["excluded_groups"] = excluded
+    result["coverage"] = coverage_stats(products, barcodes)  # Stand vor diesem Lauf
     candidates, without_barcode = select_candidates(
         products, barcodes, quantity_units, include_calories, include_images
     )

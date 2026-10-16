@@ -48,6 +48,15 @@ def normalize_unit(value) -> str:
 DEFAULT_EXCLUDED_GROUPS = (
     "reinig", "haushalt", "drogerie", "hygiene", "kosmetik", "tierbedarf", "putz", "wasch",
 )
+# Household items recognised by name when they have no cleaning product group in Grocy.
+# Parts of the normalized name; "tabs" and "wc" only count as whole words.
+NON_FOOD_NAME_PARTS = (
+    "reinig", "spulmittel", "spulmaschinen", "putzmittel", "weichspul", "klarspul", "waschmittel",
+    "waschmaschinen", "fleckenspray", "fleckenentfern", "schimmelentfern", "entkalker", "desinfekt",
+    "seife", "toilettenpapier", "kuchenrolle", "taschentuch", "backpapier", "alufolie", "mullbeutel",
+    "batterie", "glanzspul",
+)
+NON_FOOD_NAME_WORDS = ("tabs", "wc")
 _NAME_STOPWORDS = {
     "mit", "und", "von", "the", "and", "with", "aux", "des", "les", "pro", "bio", "ohne",
     "in", "im", "aus", "fur", "fuer", "de", "du", "la", "le", "au", "en", "da", "di",
@@ -201,8 +210,23 @@ def is_excluded_group(group_name, extra_groups=()) -> bool:
     return any(pattern and pattern in name for pattern in patterns)
 
 
+def is_non_food_name(name) -> bool:
+    """True for household items recognised by their name (cleaners, dish tabs, soap …)."""
+    folded = normalize_unit(name)  # letters only, umlauts folded
+    if any(part in folded for part in NON_FOOD_NAME_PARTS):
+        return True
+    return any(word in _name_words(name) for word in NON_FOOD_NAME_WORDS)
+
+
+def _name_words(text) -> list[str]:
+    folded = str(text or "").lower()
+    for src, dst in (("ä", "a"), ("ö", "o"), ("ü", "u"), ("ß", "ss")):
+        folded = folded.replace(src, dst)
+    return re.findall(r"[a-z0-9]+", folded)
+
+
 def filter_excluded_products(products, product_groups, extra_groups=()):
-    """Split products into (kept, names of excluded ones) by Grocy product group."""
+    """Split products into (kept, names of excluded ones) by product group or household name."""
     group_names = {
         str(group.get("id")): str(group.get("name") or "")
         for group in product_groups or []
@@ -211,11 +235,32 @@ def filter_excluded_products(products, product_groups, extra_groups=()):
     kept, excluded = [], []
     for product in products or []:
         group = group_names.get(str(product.get("product_group_id")), "") if isinstance(product, dict) else ""
-        if group and is_excluded_group(group, extra_groups):
+        name = str(product.get("name") or "") if isinstance(product, dict) else ""
+        if (group and is_excluded_group(group, extra_groups)) or is_non_food_name(name):
             excluded.append(str(product.get("name") or "").strip())
         else:
             kept.append(product)
     return kept, sorted(excluded, key=str.lower)
+
+
+def coverage_stats(products, barcodes) -> dict:
+    """Count how many active products have a barcode, calories and a picture."""
+    with_code = {
+        str(entry.get("product_id"))
+        for entry in barcodes or []
+        if isinstance(entry, dict)
+        and re.sub(r"\s+", "", str(entry.get("barcode") or "")).isdigit()
+        and len(re.sub(r"\s+", "", str(entry.get("barcode") or ""))) >= 8
+    }
+    stats = {"products": 0, "with_barcode": 0, "with_calories": 0, "with_image": 0}
+    for product in products or []:
+        if not isinstance(product, dict) or str(product.get("active", 1)) in ("0", "False", "false"):
+            continue
+        stats["products"] += 1
+        stats["with_barcode"] += str(product.get("id")) in with_code
+        stats["with_calories"] += not _is_empty_calories(product.get("calories"))
+        stats["with_image"] += bool(str(product.get("picture_file_name") or "").strip())
+    return stats
 
 
 def format_package(amount, unit) -> str:

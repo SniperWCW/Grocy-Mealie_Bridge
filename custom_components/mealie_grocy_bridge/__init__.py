@@ -40,6 +40,9 @@ from .const import (
     CONF_MEALPLAN_SYNC_DAYS_AHEAD,
     CONF_MEALPLAN_SYNC_MODE,
     CONF_MEALPLAN_SYNC_WEEKDAY,
+    CONF_OFF_SYNC_ENABLED,
+    CONF_OFF_SYNC_TIME,
+    CONF_OFF_SYNC_WEEKDAY,
     CONF_TODO_ENTITY,
     DEFAULT_GROCY_SHOPPING_SYNC_INTERVAL,
     DOMAIN,
@@ -416,6 +419,45 @@ def _setup_grocy_shopping_sync(hass: HomeAssistant, entry: ConfigEntry) -> None:
     entry.async_on_unload(_cancel_initial_sync)
 
 
+OFF_SCHEDULED_LIMIT = 50
+
+
+def _setup_openfoodfacts_sync(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Fill missing calories and pictures from Open Food Facts once a week."""
+    runtime_data = _get_entry_runtime(hass, entry.entry_id)
+    if not runtime_data or not runtime_data.get(CONF_OFF_SYNC_ENABLED):
+        return
+
+    hour, minute = _coerce_time_value(runtime_data.get(CONF_OFF_SYNC_TIME, "03:30"))
+    weekday = str(runtime_data.get(CONF_OFF_SYNC_WEEKDAY, "sunday")).strip().lower()
+    weekday_index = WEEKDAY_NAME_TO_INDEX.get(weekday, 6)
+
+    async def _handle_weekly(_now) -> None:
+        if dt_util.now().weekday() != weekday_index:
+            return
+        result = await async_enrich_from_openfoodfacts(
+            hass, runtime_data, dry_run=False, limit=OFF_SCHEDULED_LIMIT
+        )
+        # Only tell about news: written products and mismatches not reported before.
+        reported: set = runtime_data.setdefault("off_reported_mismatch", set())
+        new_mismatch = [e for e in result.get("name_mismatch", []) if e.get("barcode") not in reported]
+        reported.update(e.get("barcode") for e in result.get("name_mismatch", []))
+        lines = []
+        if result.get("updates"):
+            lines.append(f"{len(result['updates'])} Produkte in Grocy ergänzt.")
+        if new_mismatch:
+            names = ", ".join(f"{e['name']} ({e['barcode']})" for e in new_mismatch[:5])
+            lines.append(f"Name prüfen, nicht geschrieben: {names}.")
+        if result.get("errors"):
+            lines.append(f"{len(result['errors'])} Fehler, Details im Log.")
+        if lines:
+            await _notify(hass, "Open Food Facts", " ".join(lines))
+
+    entry.async_on_unload(
+        async_track_time_change(hass, _handle_weekly, hour=hour, minute=minute, second=0)
+    )
+
+
 def _prepare_runtime_config(config: dict) -> dict:
     """Normalize UI config into runtime-friendly values."""
     exclusions_raw = config.get(CONF_EXCLUDED_FOODS, "") or ""
@@ -653,6 +695,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = _prepare_runtime_config({**entry.data, **entry.options})
     _setup_daily_mealplan_sync(hass, entry)
     _setup_grocy_shopping_sync(hass, entry)
+    _setup_openfoodfacts_sync(hass, entry)
 
     try:
         await _async_register_frontend(hass)
