@@ -24,6 +24,10 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 
 ## ✨ Neu 
 
+- **Ab Version 0.5.2**
+  - **Neuer Service `mealie_grocy_bridge.enrich_from_openfoodfacts`:** ergänzt fehlende Kalorien und Produktbilder in Grocy über den Barcode aus Open Food Facts – mit Probelauf, nur leere Felder werden gefüllt
+  - (0.5.1 enthielt diesen Service versehentlich noch nicht)
+
 - **Ab Version 0.5.0**
   - **Notvorratskarte rechnet realistisch:** Artikel in „Stück“ zählen jetzt über typische Packungsgrößen statt mit 0 g
   - Zusammengesetzte Namen werden erkannt („Glasnudeln“, „Bio-Wienerle“, „Dosenmais“); Würzmittel, Saucen, Snacks und Haushaltsartikel zählen nicht mehr mit
@@ -136,6 +140,52 @@ Liest das Attribut `missingIngredients` des ausgewählten Rezepts aus und fügt 
 ### 3. `mealie_grocy_bridge.sync_shopping_list`
 
 Überträgt sofort alle offenen Einträge der Grocy-Einkaufsliste auf die konfigurierte To-do-Liste. Mit „Antwort zurückgeben“ (bzw. `response_variable` in Skripten) kommt eine Zusammenfassung zurück: `transferred`, `already_on_list`, `errors`, `status`.
+
+---
+
+### 4. `mealie_grocy_bridge.enrich_from_openfoodfacts`
+
+Ergänzt fehlende Kalorien und Produktbilder in Grocy aus [Open Food Facts](https://world.openfoodfacts.org). Details im Abschnitt unten.
+
+---
+
+## 🥫 Kalorien und Bilder aus Open Food Facts
+
+Der Service sucht alle aktiven Grocy-Produkte mit EAN/UPC-Barcode, denen Kalorien oder ein Bild fehlen, und schlägt sie bei Open Food Facts nach. **Gepflegte Werte werden nie überschrieben**, es werden nur leere Felder gefüllt.
+
+```yaml
+# 1. Probelauf: nichts wird geschrieben, die Antwort zeigt, was sich ändern würde
+action: mealie_grocy_bridge.enrich_from_openfoodfacts
+data:
+  dry_run: true
+  limit: 15
+response_variable: bericht
+```
+
+```yaml
+# 2. Echter Lauf
+action: mealie_grocy_bridge.enrich_from_openfoodfacts
+data:
+  dry_run: false
+  limit: 50
+```
+
+| Feld | Standard | Bedeutung |
+|------|----------|-----------|
+| `dry_run` | `true` | Nur nachschlagen und berichten |
+| `limit` | `15` | Höchstens so viele Produkte pro Lauf |
+| `include_calories` | `true` | Kalorien ergänzen |
+| `include_images` | `true` | Produktbilder hochladen |
+
+**Kalorien:** Grocy speichert Energie pro Lagereinheit, Open Food Facts pro 100 g/ml. Bei Gramm, Kilogramm, Milliliter und Liter wird umgerechnet, bei Stück, Packung, Dose, Glas & Co. über die Packungsgröße aus Open Food Facts. Ohne Packungsgröße bleibt das Feld leer und der Bericht nennt den Grund.
+
+**Bilder:** werden als `off_<barcode>.jpg` in Grocy hochgeladen und dem Produkt zugeordnet.
+
+**Tempo:** Open Food Facts erlaubt 15 Produktabfragen pro Minute. Die Bridge fragt höchstens alle 4,5 Sekunden ab, 15 Produkte dauern also gut eine Minute. Ergebnisse werden zwischengespeichert (Treffer 7 Tage, kein Treffer 30 Tage) – ein echter Lauf direkt nach dem Probelauf ist deshalb schnell.
+
+**Bericht** (Antwort und Event `mealie_grocy_bridge_openfoodfacts_enriched`): `updates` (geplante bzw. geschriebene Änderungen), `not_found` (Barcode bei Open Food Facts unbekannt), `skipped` (gefunden, aber nichts Verwertbares, mit Grund), `without_barcode`, `remaining` (noch offene Produkte über dem Limit), `errors`.
+
+Daten und Bilder von Open Food Facts stehen unter der Open Database License bzw. CC BY-SA – Quelle: Open Food Facts contributors.
 
 ---
 

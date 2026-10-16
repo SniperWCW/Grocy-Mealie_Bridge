@@ -127,6 +127,28 @@
     "sync_shopping_list": {
       "name": "Transfer Grocy shopping list",
       "description": "Immediately copies the open Grocy shopping list entries to the configured to-do list."
+    },
+    "enrich_from_openfoodfacts": {
+      "name": "Add calories and pictures from Open Food Facts",
+      "description": "Looks up missing calories and product pictures for Grocy products with a barcode on Open Food Facts. Only empty fields are filled. A dry run writes nothing.",
+      "fields": {
+        "dry_run": {
+          "name": "Dry run",
+          "description": "Only look up and report, do not write to Grocy."
+        },
+        "limit": {
+          "name": "Number of products",
+          "description": "Check at most this many products per run. Open Food Facts allows about 13 lookups per minute."
+        },
+        "include_calories": {
+          "name": "Add calories",
+          "description": "Fill in missing calories per stock unit."
+        },
+        "include_images": {
+          "name": "Add pictures",
+          "description": "Upload missing product pictures."
+        }
+      }
     }
   }
 }

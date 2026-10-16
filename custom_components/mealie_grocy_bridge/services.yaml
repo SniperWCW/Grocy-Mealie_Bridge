@@ -59,3 +59,37 @@ add_missing_ingredients:
 sync_shopping_list:
   name: "Grocy-Einkaufsliste übernehmen"
   description: "Überträgt die offenen Einträge der Grocy-Einkaufsliste sofort auf die konfigurierte To-do-Liste und entfernt sie danach in Grocy (je nach Option)."
+
+enrich_from_openfoodfacts:
+  name: "Kalorien und Bilder aus Open Food Facts ergänzen"
+  description: "Sucht für Grocy-Produkte mit Barcode fehlende Kalorien und Produktbilder bei Open Food Facts. Füllt nur leere Felder. Im Probelauf wird nichts geschrieben."
+  fields:
+    dry_run:
+      name: "Probelauf"
+      description: "Nur nachschlagen und berichten, nichts in Grocy schreiben."
+      required: false
+      default: true
+      selector:
+        boolean:
+    limit:
+      name: "Anzahl Produkte"
+      description: "Höchstens so viele Produkte pro Lauf prüfen. Open Food Facts erlaubt etwa 13 Abfragen pro Minute."
+      required: false
+      default: 15
+      selector:
+        number:
+          min: 1
+          max: 500
+          mode: box
+    include_calories:
+      name: "Kalorien ergänzen"
+      required: false
+      default: true
+      selector:
+        boolean:
+    include_images:
+      name: "Bilder ergänzen"
+      required: false
+      default: true
+      selector:
+        boolean:
