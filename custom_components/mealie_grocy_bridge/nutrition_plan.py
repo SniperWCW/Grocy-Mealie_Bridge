@@ -15,6 +15,7 @@ import re
 from dataclasses import dataclass, field
 
 KJ_PER_KCAL = 4.184
+PLACEHOLDER_CALORIES = 1.0  # Grocy-Vorbelegung: 1 kcal ist bei Lebensmitteln kein echter Wert
 MAX_KCAL_PER_100 = 900  # pure fat is about 900 kcal/100 g, anything above is a data error
 
 # Normalized unit name -> factor relative to 100 g / 100 ml
@@ -152,6 +153,7 @@ class Candidate:
     stock_unit: str
     needs_calories: bool
     needs_image: bool
+    calories_old: float | None = None  # vorhandener Platzhalter, der ersetzt wird
 
 
 @dataclass
@@ -243,7 +245,7 @@ def filter_excluded_products(products, product_groups, extra_groups=()):
     return kept, sorted(excluded, key=str.lower)
 
 
-def coverage_stats(products, barcodes) -> dict:
+def coverage_stats(products, barcodes, placeholder_is_empty=True) -> dict:
     """Count how many active products have a barcode, calories and a picture."""
     with_code = {
         str(entry.get("product_id"))
@@ -252,13 +254,16 @@ def coverage_stats(products, barcodes) -> dict:
         and re.sub(r"\s+", "", str(entry.get("barcode") or "")).isdigit()
         and len(re.sub(r"\s+", "", str(entry.get("barcode") or ""))) >= 8
     }
-    stats = {"products": 0, "with_barcode": 0, "with_calories": 0, "with_image": 0}
+    stats = {"products": 0, "with_barcode": 0, "with_calories": 0, "placeholder_calories": 0, "with_image": 0}
     for product in products or []:
         if not isinstance(product, dict) or str(product.get("active", 1)) in ("0", "False", "false"):
             continue
         stats["products"] += 1
         stats["with_barcode"] += str(product.get("id")) in with_code
-        stats["with_calories"] += not _is_empty_calories(product.get("calories"))
+        if _is_placeholder_calories(product.get("calories")) and placeholder_is_empty:
+            stats["placeholder_calories"] += 1
+        else:
+            stats["with_calories"] += not _is_empty_calories(product.get("calories"))
         stats["with_image"] += bool(str(product.get("picture_file_name") or "").strip())
     return stats
 
@@ -270,12 +275,20 @@ def format_package(amount, unit) -> str:
     return f"{amount:g} {unit}"
 
 
+def _is_placeholder_calories(value) -> bool:
+    """True for the automatically pre-filled value (1 kcal or less, but not empty/0)."""
+    number = _to_float(value)
+    return number is not None and 0 < number <= PLACEHOLDER_CALORIES
+
+
 def _is_empty_calories(value) -> bool:
     number = _to_float(value)
     return number is None or number <= 0
 
 
-def select_candidates(products, barcodes, quantity_units, include_calories=True, include_images=True):
+def select_candidates(
+    products, barcodes, quantity_units, include_calories=True, include_images=True, replace_placeholder=True
+):
     """Return products with a barcode that lack calories or a picture.
 
     Products without a barcode are returned separately (by name) so the
@@ -304,7 +317,8 @@ def select_candidates(products, barcodes, quantity_units, include_calories=True,
             continue
         if str(product.get("active", 1)) in ("0", "False", "false"):
             continue
-        needs_calories = include_calories and _is_empty_calories(product.get("calories"))
+        placeholder = replace_placeholder and _is_placeholder_calories(product.get("calories"))
+        needs_calories = include_calories and (_is_empty_calories(product.get("calories")) or placeholder)
         needs_image = include_images and not str(product.get("picture_file_name") or "").strip()
         if not (needs_calories or needs_image):
             continue
@@ -321,6 +335,7 @@ def select_candidates(products, barcodes, quantity_units, include_calories=True,
                 stock_unit=unit_names.get(str(product.get("qu_id_stock")), ""),
                 needs_calories=needs_calories,
                 needs_image=needs_image,
+                calories_old=_to_float(product.get("calories")) if needs_calories and placeholder else None,
             )
         )
     candidates.sort(key=lambda candidate: candidate.name.lower())

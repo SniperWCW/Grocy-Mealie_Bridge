@@ -164,5 +164,31 @@ def test_coverage_stats_counts_active_products_only():
     ]
     barcodes = [{"product_id": 1, "barcode": "4001234567890"}, {"product_id": 4, "barcode": "grcy:p:4"}]
     assert plan.coverage_stats(products, barcodes) == {
-        "products": 3, "with_barcode": 1, "with_calories": 1, "with_image": 1,
+        "products": 3, "with_barcode": 1, "with_calories": 1, "placeholder_calories": 0, "with_image": 1,
     }
+
+
+def test_placeholder_calories_are_replaced_but_real_values_are_not():
+    products = [
+        {"id": 1, "name": "Platzhalter", "qu_id_stock": 1, "calories": "1", "picture_file_name": "x.jpg"},
+        {"id": 2, "name": "Echt", "qu_id_stock": 1, "calories": "3.5", "picture_file_name": "y.jpg"},
+        {"id": 3, "name": "Leer", "qu_id_stock": 1, "calories": "0", "picture_file_name": "z.jpg"},
+    ]
+    barcodes = [{"product_id": i, "barcode": f"400123456789{i}"} for i in (1, 2, 3)]
+    candidates, _ = plan.select_candidates(products, barcodes, UNITS)
+    assert [(c.name, c.calories_old) for c in candidates] == [("Leer", None), ("Platzhalter", 1.0)]
+    # abgeschaltet: der Platzhalter bleibt stehen
+    candidates, _ = plan.select_candidates(products, barcodes, UNITS, replace_placeholder=False)
+    assert [c.name for c in candidates] == ["Leer"]
+
+
+def test_coverage_counts_placeholders_separately():
+    products = [
+        {"id": 1, "name": "A", "calories": "1"},
+        {"id": 2, "name": "B", "calories": "250"},
+        {"id": 3, "name": "C", "calories": None},
+    ]
+    stats = plan.coverage_stats(products, [])
+    assert (stats["with_calories"], stats["placeholder_calories"]) == (1, 1)
+    stats = plan.coverage_stats(products, [], placeholder_is_empty=False)
+    assert (stats["with_calories"], stats["placeholder_calories"]) == (2, 0)

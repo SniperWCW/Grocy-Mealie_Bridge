@@ -153,6 +153,7 @@ async def async_enrich_from_openfoodfacts(
     exclude_product_groups=(),
     name_check: bool = True,
     confirm_barcodes=(),
+    replace_placeholder_calories: bool = True,
 ) -> dict:
     """Look up products missing calories or pictures and (unless dry_run) fill them in Grocy."""
     lock: asyncio.Lock = runtime_data.setdefault("off_enrich_lock", asyncio.Lock())
@@ -170,6 +171,7 @@ async def async_enrich_from_openfoodfacts(
             exclude_product_groups,
             name_check,
             {str(code).strip() for code in confirm_barcodes or []},
+            replace_placeholder_calories,
         )
 
     runtime_data["last_off_enrichment"] = result
@@ -187,7 +189,8 @@ async def async_enrich_from_openfoodfacts(
 
 
 async def _async_run(
-    hass, runtime_data, dry_run, limit, include_calories, include_images, exclude_groups, name_check, confirmed
+    hass, runtime_data, dry_run, limit, include_calories, include_images, exclude_groups, name_check, confirmed,
+    replace_placeholder,
 ) -> dict:
     result = {
         "status": "ok",
@@ -223,9 +226,9 @@ async def _async_run(
 
     products, excluded = filter_excluded_products(products, product_groups, exclude_groups)
     result["excluded_groups"] = excluded
-    result["coverage"] = coverage_stats(products, barcodes)  # Stand vor diesem Lauf
+    result["coverage"] = coverage_stats(products, barcodes, replace_placeholder)  # Stand vor diesem Lauf
     candidates, without_barcode = select_candidates(
-        products, barcodes, quantity_units, include_calories, include_images
+        products, barcodes, quantity_units, include_calories, include_images, replace_placeholder
     )
     result["without_barcode"] = without_barcode
 
@@ -239,7 +242,8 @@ async def _async_run(
 
     try:
         for index, candidate in enumerate(candidates):
-            if result["processed"] >= limit:
+            # Das Limit zählt echte Abfragen bei Open Food Facts; Treffer aus dem Zwischenspeicher sind frei.
+            if client.lookups >= limit:
                 result["remaining"] = len(candidates) - index
                 break
             result["processed"] += 1
@@ -278,6 +282,8 @@ async def _async_run(
                 entry["package"] = package
             if update.calories is not None:
                 entry["calories"] = update.calories
+                if candidate.calories_old is not None:
+                    entry["calories_old"] = candidate.calories_old
             if update.image_url:
                 entry["image"] = update.image_url
             if update.notes:
