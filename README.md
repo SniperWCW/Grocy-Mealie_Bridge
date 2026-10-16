@@ -24,6 +24,16 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 
 ## ✨ Neu 
 
+- **Ab Version 0.5.0**
+  - **Notvorratskarte rechnet realistisch:** Artikel in „Stück“ zählen jetzt über typische Packungsgrößen statt mit 0 g
+  - Zusammengesetzte Namen werden erkannt („Glasnudeln“, „Bio-Wienerle“, „Dosenmais“); Würzmittel, Saucen, Snacks und Haushaltsartikel zählen nicht mehr mit
+  - Jeder Artikel zählt in genau einer Gruppe; Instant-Nudeln zählen wieder als Getreide
+  - Grocy-Produktgruppen haben Vorrang vor den Suchbegriffen, eigene Zuordnung über `product_groups`
+  - Gesamtanzeige „Notvorrat reicht für“ richtet sich nach der schwächsten Gruppe statt nach dem Durchschnitt
+  - Neue Option `water_liters` für Wasser, das nicht in Grocy erfasst ist
+  - Hinweis auf abgelaufene Artikel; `sensor.mealie_grocy_vorrat` liefert zusätzlich `best_before_date`
+  - Tests für die Kartenlogik: `node --test tests/*.mjs`
+
 - **Ab Version 0.4.0**
   - **Grocy-Einkaufsliste → To-do-Liste:** Die Bridge überträgt die Grocy-Einkaufsliste auf die konfigurierte To-do-Liste (z. B. Bring) und ersetzt damit den bisherigen n8n-Flow. Aktivierung in den Optionen, siehe Abschnitt unten
   - Neuer Service `mealie_grocy_bridge.sync_shopping_list` (sofortige Übernahme, liefert optional eine Zusammenfassung zurück)
@@ -198,7 +208,7 @@ Enthält den vollständigen Grocy-Bestand für Bestandsansichten:
 
 Enthält eine bewusst kompakte Auswahl der Bestandsfelder, welche die Krisenvorsorge-Karte benötigt:
 
-- `stock_items` → Name, Menge, Einheit, Status, Produktgruppe und Lagerort
+- `stock_items` → Name, Menge, Einheit, Status, MHD (`best_before_date`), Produktgruppe und Lagerort
 - `total_count`, `expiring_count`, `expired_count` → kompakte Zähler
 
 Der Zustand jedes Sensors ist jeweils eine Anzahl: Rezeptvorschläge, Bestandspositionen beziehungsweise für den Notvorrat nutzbare Produkte.
@@ -259,9 +269,17 @@ entity: sensor.mealie_grocy_vorrat
 adults: 2
 children: 1
 days: 10
+water_liters: 20          # optional: Wasser, das nicht in Grocy erfasst ist
 collapsible: true
 initially_collapsed: false
+product_groups:           # optional: Grocy-Produktgruppe → Gruppe der Karte
+  Konserven Obst: fruit
+  Gewürze: none
 ```
+
+Gültige Ziele für `product_groups`: `grain`, `vegetables`, `fruit`, `milk`, `protein`, `fats`, `drinks` oder `none` (zählt nicht). Ohne Eintrag erkennt die Karte gängige Gruppennamen wie „Nudeln“, „Mehl“ oder „Reinigungsmittel“ selbst; danach greifen feste Regeln und Suchbegriffe im Produktnamen. Jeder Artikel zählt in genau einer Gruppe. Artikel in Stück werden mit typischen Packungsgrößen geschätzt.
+
+Die Gesamtanzeige „Notvorrat reicht für“ nennt die Tage der schwächsten Gruppe – der Vorrat reicht nur so lange wie das, was zuerst ausgeht. Der Durchschnitt aller Gruppen steht als Zusatzinfo darunter.
 
 Die Rezeptkarte bleibt unveraendert. Die neue Karte nutzt den bereits vorhandenen Grocy-Datenabruf und zeigt pro Erzeugnisgruppe:
 
