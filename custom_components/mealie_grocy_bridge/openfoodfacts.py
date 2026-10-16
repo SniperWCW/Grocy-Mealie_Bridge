@@ -226,7 +226,7 @@ async def _async_run(
 
     products, excluded = filter_excluded_products(products, product_groups, exclude_groups)
     result["excluded_groups"] = excluded
-    result["coverage"] = coverage_stats(products, barcodes, replace_placeholder)  # Stand vor diesem Lauf
+    result["coverage"] = coverage_stats(products, barcodes, replace_placeholder, quantity_units)  # Stand vor diesem Lauf
     candidates, without_barcode = select_candidates(
         products, barcodes, quantity_units, include_calories, include_images, replace_placeholder
     )

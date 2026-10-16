@@ -24,6 +24,10 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 
 ## ✨ Neu 
 
+- **Ab Version 0.5.6**
+  - Kalorien-Platzhalter werden je Einheit erkannt: bei g/ml nur Werte unter 0,1 kcal, sonst bis 1 kcal – echte Werte wie 0,7 kcal/g (Apfelmus) oder 1 kcal/g bleiben unangetastet und werden nicht erneut gemeldet
+  - Meldet Open Food Facts 0 kcal, wird nichts geschrieben (der Hinweis steht unter `skipped`)
+  - `coverage` zählt Platzhalter mit der Einheit des Produkts
 - **Ab Version 0.5.5**
   - Open-Food-Facts-Abgleich ersetzt von Grocy vorbelegte Kalorien-Platzhalter (1 kcal); Bericht zeigt alt und neu
   - `limit` zählt nur noch echte Abfragen bei Open Food Facts, damit nicht erledigbare Produkte das Limit nicht aufbrauchen
@@ -188,14 +192,14 @@ data:
 |------|----------|-----------|
 | `dry_run` | `true` | Nur nachschlagen und berichten |
 | `limit` | `15` | Höchstens so viele Abfragen bei Open Food Facts pro Lauf (Treffer aus dem Zwischenspeicher zählen nicht mit) |
-| `replace_placeholder_calories` | `true` | Von Grocy vorbelegten Platzhalter (1 kcal oder weniger) durch den Wert aus Open Food Facts ersetzen |
+| `replace_placeholder_calories` | `true` | Von Grocy vorbelegten Platzhalter (je Stück/Liter/kg bis 1 kcal, je g/ml unter 0,1 kcal) durch den Wert aus Open Food Facts ersetzen |
 | `include_calories` | `true` | Kalorien ergänzen |
 | `include_images` | `true` | Produktbilder hochladen |
 | `exclude_product_groups` | leer | Weitere Produktgruppen überspringen (Teil des Namens genügt). Reinigung, Haushalt, Drogerie, Hygiene, Kosmetik und Tierbedarf sind immer ausgeschlossen |
 | `name_check` | `true` | Abweichende Namen nicht schreiben, sondern melden |
 | `confirm_barcodes` | leer | Barcodes aus `name_mismatch`, die trotzdem geschrieben werden sollen |
 
-**Kalorien-Platzhalter:** Hat Grocy ein Produkt mit 1 kcal vorbelegt, gilt das als „nicht gepflegt“ und wird ersetzt – im Bericht steht dann `calories_old` neben dem neuen Wert. Echte Werte (mehr als 1 kcal) werden nie überschrieben. Mit `replace_placeholder_calories: false` abschaltbar. `coverage.placeholder_calories` zählt diese Produkte.
+**Kalorien-Platzhalter:** Hat Grocy ein Produkt mit 1 kcal vorbelegt (bei Produkten in g/ml: 1 kcal je Packung, also unter 0,1 kcal je Gramm), gilt das als „nicht gepflegt“ und wird ersetzt – im Bericht steht dann `calories_old` neben dem neuen Wert. Echte Werte werden nie überschrieben. Mit `replace_placeholder_calories: false` abschaltbar. `coverage.placeholder_calories` zählt diese Produkte.
 
 **Kalorien:** Grocy speichert Energie pro Lagereinheit, Open Food Facts pro 100 g/ml. Bei Gramm, Kilogramm, Milliliter und Liter wird umgerechnet, bei Stück, Packung, Dose, Glas & Co. über die Packungsgröße aus Open Food Facts. Ohne Packungsgröße bleibt das Feld leer und der Bericht nennt den Grund.
 

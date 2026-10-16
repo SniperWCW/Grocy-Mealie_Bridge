@@ -170,25 +170,41 @@ def test_coverage_stats_counts_active_products_only():
 
 def test_placeholder_calories_are_replaced_but_real_values_are_not():
     products = [
-        {"id": 1, "name": "Platzhalter", "qu_id_stock": 1, "calories": "1", "picture_file_name": "x.jpg"},
-        {"id": 2, "name": "Echt", "qu_id_stock": 1, "calories": "3.5", "picture_file_name": "y.jpg"},
-        {"id": 3, "name": "Leer", "qu_id_stock": 1, "calories": "0", "picture_file_name": "z.jpg"},
+        {"id": 1, "name": "Platzhalter Stück", "qu_id_stock": 2, "calories": "1", "picture_file_name": "x.jpg"},
+        {"id": 2, "name": "Echt", "qu_id_stock": 2, "calories": "350", "picture_file_name": "y.jpg"},
+        {"id": 3, "name": "Leer", "qu_id_stock": 2, "calories": "0", "picture_file_name": "z.jpg"},
+        {"id": 4, "name": "Platzhalter Gramm", "qu_id_stock": 1, "calories": "0.0067", "picture_file_name": "x.jpg"},
+        {"id": 5, "name": "Apfelmus", "qu_id_stock": 1, "calories": "0.7", "picture_file_name": "x.jpg"},
+        {"id": 6, "name": "Kidneybohnen", "qu_id_stock": 1, "calories": "1", "picture_file_name": "x.jpg"},
+        {"id": 7, "name": "Milch", "qu_id_stock": 3, "calories": "1", "picture_file_name": "x.jpg"},
     ]
-    barcodes = [{"product_id": i, "barcode": f"400123456789{i}"} for i in (1, 2, 3)]
+    barcodes = [{"product_id": i, "barcode": f"400123456789{i}"} for i in range(1, 8)]
     candidates, _ = plan.select_candidates(products, barcodes, UNITS)
-    assert [(c.name, c.calories_old) for c in candidates] == [("Leer", None), ("Platzhalter", 1.0)]
-    # abgeschaltet: der Platzhalter bleibt stehen
+    # 0,7 und 1 kcal je Gramm sind echte Werte; Platzhalter je Gramm liegen weit unter 0,1
+    assert [(c.name, c.calories_old) for c in candidates] == [
+        ("Leer", None), ("Milch", 1.0), ("Platzhalter Gramm", 0.0067), ("Platzhalter Stück", 1.0),
+    ]
+    # abgeschaltet: nur leere Werte bleiben Kandidaten
     candidates, _ = plan.select_candidates(products, barcodes, UNITS, replace_placeholder=False)
     assert [c.name for c in candidates] == ["Leer"]
 
 
 def test_coverage_counts_placeholders_separately():
     products = [
-        {"id": 1, "name": "A", "calories": "1"},
-        {"id": 2, "name": "B", "calories": "250"},
-        {"id": 3, "name": "C", "calories": None},
+        {"id": 1, "name": "A", "qu_id_stock": 2, "calories": "1"},
+        {"id": 2, "name": "B", "qu_id_stock": 2, "calories": "250"},
+        {"id": 3, "name": "C", "qu_id_stock": 2, "calories": None},
+        {"id": 4, "name": "D", "qu_id_stock": 1, "calories": "0.7"},
+        {"id": 5, "name": "E", "qu_id_stock": 1, "calories": "0.004"},
     ]
-    stats = plan.coverage_stats(products, [])
-    assert (stats["with_calories"], stats["placeholder_calories"]) == (1, 1)
-    stats = plan.coverage_stats(products, [], placeholder_is_empty=False)
-    assert (stats["with_calories"], stats["placeholder_calories"]) == (2, 0)
+    stats = plan.coverage_stats(products, [], quantity_units=UNITS)
+    assert (stats["with_calories"], stats["placeholder_calories"]) == (2, 2)
+    stats = plan.coverage_stats(products, [], placeholder_is_empty=False, quantity_units=UNITS)
+    assert (stats["with_calories"], stats["placeholder_calories"]) == (4, 0)
+
+
+def test_zero_kcal_from_open_food_facts_is_not_written():
+    candidate = plan.Candidate(1, "Jodsalz", ["4005555555555"], "Gramm", True, False)
+    update = plan.plan_update(candidate, "4005555555555", {"kcal_100": 0, "package_amount": 500, "image_url": ""})
+    assert not update.has_changes
+    assert update.notes == ["0 kcal bei Open Food Facts, nicht geschrieben"]

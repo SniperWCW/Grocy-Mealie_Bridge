@@ -15,7 +15,8 @@ import re
 from dataclasses import dataclass, field
 
 KJ_PER_KCAL = 4.184
-PLACEHOLDER_CALORIES = 1.0  # Grocy-Vorbelegung: 1 kcal ist bei Lebensmitteln kein echter Wert
+PLACEHOLDER_CALORIES = 1.0  # Grocy-Vorbelegung: 1 kcal je Packung/Liter/kg ist kein echter Wert
+PLACEHOLDER_CALORIES_PER_BASE = 0.1  # je g/ml: die Vorbelegung ist 1 kcal je Packung, also meist unter 0,1
 MAX_KCAL_PER_100 = 900  # pure fat is about 900 kcal/100 g, anything above is a data error
 
 # Normalized unit name -> factor relative to 100 g / 100 ml
@@ -245,8 +246,9 @@ def filter_excluded_products(products, product_groups, extra_groups=()):
     return kept, sorted(excluded, key=str.lower)
 
 
-def coverage_stats(products, barcodes, placeholder_is_empty=True) -> dict:
+def coverage_stats(products, barcodes, placeholder_is_empty=True, quantity_units=None) -> dict:
     """Count how many active products have a barcode, calories and a picture."""
+    unit_names = _unit_names(quantity_units)
     with_code = {
         str(entry.get("product_id"))
         for entry in barcodes or []
@@ -260,7 +262,8 @@ def coverage_stats(products, barcodes, placeholder_is_empty=True) -> dict:
             continue
         stats["products"] += 1
         stats["with_barcode"] += str(product.get("id")) in with_code
-        if _is_placeholder_calories(product.get("calories")) and placeholder_is_empty:
+        stock_unit = unit_names.get(str(product.get("qu_id_stock")), "")
+        if placeholder_is_empty and _is_placeholder_calories(product.get("calories"), stock_unit):
             stats["placeholder_calories"] += 1
         else:
             stats["with_calories"] += not _is_empty_calories(product.get("calories"))
@@ -275,10 +278,28 @@ def format_package(amount, unit) -> str:
     return f"{amount:g} {unit}"
 
 
-def _is_placeholder_calories(value) -> bool:
-    """True for the automatically pre-filled value (1 kcal or less, but not empty/0)."""
+def _unit_names(quantity_units) -> dict[str, str]:
+    names = {}
+    for unit in quantity_units or []:
+        if isinstance(unit, dict) and unit.get("id") is not None:
+            names[str(unit["id"])] = str(unit.get("name") or "")
+    return names
+
+
+def _is_placeholder_calories(value, unit_name="") -> bool:
+    """True for the automatically pre-filled value (never for empty/0).
+
+    Grocy stores calories per stock unit. Products counted in pieces, liters or
+    kilograms carry the pre-fill 1 kcal (or less); products counted in g/ml carry
+    1 kcal per package, i.e. well below 0.1 per gram. Real values such as 0.7 kcal
+    per gram (apple sauce) or exactly 1 (kidney beans) are therefore kept.
+    """
     number = _to_float(value)
-    return number is not None and 0 < number <= PLACEHOLDER_CALORIES
+    if number is None or number <= 0:
+        return False
+    if _SCALED_UNITS.get(normalize_unit(unit_name)) == 0.01:
+        return number < PLACEHOLDER_CALORIES_PER_BASE
+    return number <= PLACEHOLDER_CALORIES
 
 
 def _is_empty_calories(value) -> bool:
@@ -294,10 +315,7 @@ def select_candidates(
     Products without a barcode are returned separately (by name) so the
     report can list them.
     """
-    unit_names = {}
-    for unit in quantity_units or []:
-        if isinstance(unit, dict) and unit.get("id") is not None:
-            unit_names[str(unit["id"])] = str(unit.get("name") or "")
+    unit_names = _unit_names(quantity_units)
 
     barcode_map: dict[str, list[str]] = {}
     for entry in barcodes or []:
@@ -317,7 +335,8 @@ def select_candidates(
             continue
         if str(product.get("active", 1)) in ("0", "False", "false"):
             continue
-        placeholder = replace_placeholder and _is_placeholder_calories(product.get("calories"))
+        stock_unit = unit_names.get(str(product.get("qu_id_stock")), "")
+        placeholder = replace_placeholder and _is_placeholder_calories(product.get("calories"), stock_unit)
         needs_calories = include_calories and (_is_empty_calories(product.get("calories")) or placeholder)
         needs_image = include_images and not str(product.get("picture_file_name") or "").strip()
         if not (needs_calories or needs_image):
@@ -332,7 +351,7 @@ def select_candidates(
                 product_id=int(product["id"]),
                 name=name,
                 barcodes=codes,
-                stock_unit=unit_names.get(str(product.get("qu_id_stock")), ""),
+                stock_unit=stock_unit,
                 needs_calories=needs_calories,
                 needs_image=needs_image,
                 calories_old=_to_float(product.get("calories")) if needs_calories and placeholder else None,
@@ -350,10 +369,13 @@ def plan_update(candidate: Candidate, barcode: str, off_product: dict) -> Produc
         calories, reason = kcal_per_stock_unit(
             off_product.get("kcal_100"), candidate.stock_unit, off_product.get("package_amount")
         )
-        if calories is not None:
-            update.calories = calories
-        else:
+        if calories is None:
             update.notes.append(reason)
+        elif calories <= 0:
+            # 0 gilt in Grocy als "nicht gepflegt"; ein Schreiben brächte nichts und käme jede Woche wieder
+            update.notes.append("0 kcal bei Open Food Facts, nicht geschrieben")
+        else:
+            update.calories = calories
     if candidate.needs_image:
         if off_product.get("image_url"):
             update.image_url = off_product["image_url"]
