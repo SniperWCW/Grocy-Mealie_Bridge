@@ -24,6 +24,11 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 
 ## ✨ Neu 
 
+- **Ab Version 0.5.4**
+  - **Wöchentlicher Open-Food-Facts-Abgleich:** in den Optionen aktivierbar (Wochentag und Uhrzeit), schreibt bis zu 50 Produkte pro Lauf und meldet per `notify.notify`, was ergänzt wurde oder geprüft werden muss
+  - Haushaltsartikel (Spülmittel, Seife, Tabs, Weichspüler …) werden auch ohne Reinigungs-Produktgruppe am Namen erkannt und übersprungen
+  - Bericht enthält `coverage`: Produkte gesamt, mit Barcode, mit Kalorien, mit Bild (Stand vor dem Lauf)
+
 - **Ab Version 0.5.3**
   - Open-Food-Facts-Abgleich übergeht Haushaltsartikel: Produktgruppen mit Reinigung, Haushalt, Drogerie, Hygiene, Kosmetik oder Tierbedarf im Namen werden nicht abgefragt (zusätzlich per `exclude_product_groups`)
   - Namensprüfung: weicht der Open-Food-Facts-Name stark vom Grocy-Namen ab (falscher Barcode?), wird nichts geschrieben, sondern unter `name_mismatch` gemeldet; mit `confirm_barcodes` trotzdem übernehmen
@@ -191,11 +196,15 @@ data:
 
 **Tempo:** Open Food Facts erlaubt 15 Produktabfragen pro Minute. Die Bridge fragt höchstens alle 4,5 Sekunden ab, 15 Produkte dauern also gut eine Minute. Ergebnisse werden zwischengespeichert (Treffer 7 Tage, kein Treffer 30 Tage) – ein echter Lauf direkt nach dem Probelauf ist deshalb schnell.
 
+**Wöchentlich automatisch:** In den Integrations-Optionen „Kalorien/Bilder wöchentlich aus Open Food Facts ergänzen“ aktivieren und Wochentag und Uhrzeit wählen (Standard Sonntag 03:30). Der Lauf schreibt bis zu 50 Produkte, fragt die Namensprüfung mit ein und schickt nur dann eine Nachricht über `notify.notify`, wenn etwas ergänzt wurde oder ein neuer Name geprüft werden muss. Erst den Service als Probelauf testen.
+
+**Haushaltsartikel:** Neben den Produktgruppen werden typische Namen übersprungen (Reiniger, Spülmittel, Seife, Weichspüler, Tabs, WC, Backpapier, Batterien u. a.).
+
 **Namensprüfung:** Mindestens die Hälfte der Wörter des Grocy-Namens muss im Open-Food-Facts-Namen vorkommen (auch als Wortteil, „Gansterrine“ enthält „Terrine“). Sonst landet das Produkt unter `name_mismatch`. Das ist oft nur ein Sprachunterschied („Thunfisch“ / „Thon“) – dann den Barcode in `confirm_barcodes` eintragen. Ein echter Treffer ist dagegen ein falscher Barcode in Grocy.
 
 **Packungsgröße:** Bei Einheiten wie Stück oder Packung beruhen die Kalorien auf der Packungsgröße (`package` im Bericht). Ist ein Stück in Grocy nur ein Teil der Packung (z. B. eine einzelne Stange aus einem 8er-Pack), passt der Wert nicht – diese Produkte bitte nicht übernehmen.
 
-**Bericht** (Antwort und Event `mealie_grocy_bridge_openfoodfacts_enriched`): `updates` (geplante bzw. geschriebene Änderungen), `name_mismatch`, `excluded_groups`, `not_found` (Barcode bei Open Food Facts unbekannt), `skipped` (gefunden, aber nichts Verwertbares, mit Grund), `without_barcode`, `remaining` (noch offene Produkte über dem Limit), `errors`.
+**Bericht** (Antwort und Event `mealie_grocy_bridge_openfoodfacts_enriched`): `updates` (geplante bzw. geschriebene Änderungen), `name_mismatch`, `excluded_groups`, `coverage`, `not_found` (Barcode bei Open Food Facts unbekannt), `skipped` (gefunden, aber nichts Verwertbares, mit Grund), `without_barcode`, `remaining` (noch offene Produkte über dem Limit), `errors`.
 
 Daten und Bilder von Open Food Facts stehen unter der Open Database License bzw. CC BY-SA – Quelle: Open Food Facts contributors.
 

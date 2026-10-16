@@ -34,6 +34,9 @@ from .const import (
     CONF_MEALPLAN_SYNC_WEEKDAY,
     CONF_MEALPLAN_WINDOW_DAYS,
     CONF_MEALPLAN_WINDOW_MODE,
+    CONF_OFF_SYNC_ENABLED,
+    CONF_OFF_SYNC_TIME,
+    CONF_OFF_SYNC_WEEKDAY,
     CONF_TODO_ENTITY,
     DEFAULT_GROCY_SHOPPING_SYNC_INTERVAL,
     DOMAIN,
@@ -119,6 +122,9 @@ def _validate_user_input(user_input: dict) -> dict:
         and not 0 <= mealplan_window_days <= 14
     ):
         errors[CONF_MEALPLAN_WINDOW_DAYS] = "invalid_days_range"
+
+    if not _is_valid_time_value(user_input.get(CONF_OFF_SYNC_TIME, "03:30")):
+        errors[CONF_OFF_SYNC_TIME] = "invalid_time"
 
     sync_mode = user_input.get(CONF_MEALPLAN_SYNC_MODE, MEALPLAN_SYNC_MODE_DAILY)
     sync_days_ahead = _coerce_int(
@@ -244,6 +250,25 @@ def _build_schema_fields(values: dict) -> dict:
             default=values.get(CONF_GROCY_SHOPPING_AFTER, GROCY_SHOPPING_AFTER_DELETE),
         )
     ] = vol.In(SHOPPING_AFTER_OPTIONS)
+
+    schema_fields[
+        vol.Optional(
+            CONF_OFF_SYNC_ENABLED,
+            default=values.get(CONF_OFF_SYNC_ENABLED, False),
+        )
+    ] = bool
+    schema_fields[
+        vol.Optional(
+            CONF_OFF_SYNC_WEEKDAY,
+            default=values.get(CONF_OFF_SYNC_WEEKDAY, "sunday"),
+        )
+    ] = vol.In(WEEKDAY_OPTIONS)
+    schema_fields[
+        vol.Optional(
+            CONF_OFF_SYNC_TIME,
+            default=values.get(CONF_OFF_SYNC_TIME, "03:30"),
+        )
+    ] = str
 
     current_todo = values.get(CONF_TODO_ENTITY)
     if current_todo:

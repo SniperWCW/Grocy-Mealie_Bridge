@@ -131,3 +131,38 @@ def test_format_package():
     assert plan.format_package(227.0, "g") == "227 g"
     assert plan.format_package(1980.0, "ml") == "1980 ml"
     assert plan.format_package(None, "g") == ""
+
+
+def test_household_items_recognised_by_name():
+    # aus dem zweiten Probelauf: Artikel ohne Reinigungs-Produktgruppe
+    for name in ["Putzmittel Küche", "Schimmelentferner", "Spülmittel", "Weichspüler Soft Embrace",
+                 "Geschirr Tabs", "Fleckenspray", "Handseife", "Klarspüler", "WC Reiniger",
+                 "Waschmaschinen Pfleger", "Backpapier"]:
+        assert plan.is_non_food_name(name), name
+    # Lebensmittel mit ähnlichen Buchstaben bleiben drin
+    for name in ["Tabasco", "Reismehl", "Kaiser-Natron", "Zitronensäure", "Schokolade", "Wasserreis"]:
+        assert not plan.is_non_food_name(name), name
+
+
+def test_filter_excluded_products_also_uses_names():
+    products = [
+        {"id": 1, "name": "Spülmittel"},
+        {"id": 2, "name": "Fusilli", "product_group_id": 8},
+        {"id": 3, "name": "Geschirr Tabs"},
+    ]
+    kept, excluded = plan.filter_excluded_products(products, [{"id": 8, "name": "Nudeln"}])
+    assert [p["name"] for p in kept] == ["Fusilli"]
+    assert excluded == ["Geschirr Tabs", "Spülmittel"]
+
+
+def test_coverage_stats_counts_active_products_only():
+    products = [
+        {"id": 1, "name": "Reis", "calories": "3.5", "picture_file_name": "reis.jpg"},
+        {"id": 2, "name": "Linsen", "calories": "0", "picture_file_name": ""},
+        {"id": 3, "name": "Inaktiv", "active": 0, "calories": "9"},
+        {"id": 4, "name": "Eigenmarke", "calories": None},
+    ]
+    barcodes = [{"product_id": 1, "barcode": "4001234567890"}, {"product_id": 4, "barcode": "grcy:p:4"}]
+    assert plan.coverage_stats(products, barcodes) == {
+        "products": 3, "with_barcode": 1, "with_calories": 1, "with_image": 1,
+    }

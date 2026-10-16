@@ -20,14 +20,18 @@
           "mealplan_sync_days_ahead": "Next Y days for weekly sync (1–14)",
           "grocy_shopping_sync_enabled": "Transfer Grocy shopping list",
           "grocy_shopping_sync_interval": "Grocy shopping list interval (minutes)",
-          "grocy_shopping_after_transfer": "After transfer in Grocy"
+          "grocy_shopping_after_transfer": "After transfer in Grocy",
+          "openfoodfacts_sync_enabled": "Add calories/pictures from Open Food Facts weekly",
+          "openfoodfacts_sync_weekday": "Weekday for Open Food Facts lookup",
+          "openfoodfacts_sync_time": "Time for Open Food Facts lookup (HH:MM)"
         },
         "data_description": {
           "mealie_url": "e.g. http://192.168.1.10:9000",
           "grocy_url": "e.g. http://192.168.1.11:9283",
           "excluded_foods": "Matches whole words and word endings, e.g. 'öl' matches 'Olivenöl'.",
           "grocy_shopping_sync_enabled": "Regularly copies the Grocy shopping list to the to-do list.",
-          "grocy_shopping_sync_interval": "1–1440 minutes. Can also be triggered any time with the 'Transfer Grocy shopping list' action."
+          "grocy_shopping_sync_interval": "1–1440 minutes. Can also be triggered any time with the 'Transfer Grocy shopping list' action.",
+          "openfoodfacts_sync_enabled": "Fills missing calories and pictures (empty fields only), up to 50 products per run. Reports via notify.notify what was added or needs a look. Try the service as a dry run first."
         }
       }
     },
@@ -65,14 +69,18 @@
           "mealplan_sync_days_ahead": "Next Y days for weekly sync (1–14)",
           "grocy_shopping_sync_enabled": "Transfer Grocy shopping list",
           "grocy_shopping_sync_interval": "Grocy shopping list interval (minutes)",
-          "grocy_shopping_after_transfer": "After transfer in Grocy"
+          "grocy_shopping_after_transfer": "After transfer in Grocy",
+          "openfoodfacts_sync_enabled": "Add calories/pictures from Open Food Facts weekly",
+          "openfoodfacts_sync_weekday": "Weekday for Open Food Facts lookup",
+          "openfoodfacts_sync_time": "Time for Open Food Facts lookup (HH:MM)"
         },
         "data_description": {
           "mealie_url": "e.g. http://192.168.1.10:9000",
           "grocy_url": "e.g. http://192.168.1.11:9283",
           "excluded_foods": "Matches whole words and word endings, e.g. 'öl' matches 'Olivenöl'.",
           "grocy_shopping_sync_enabled": "Regularly copies the Grocy shopping list to the to-do list.",
-          "grocy_shopping_sync_interval": "1–1440 minutes. Can also be triggered any time with the 'Transfer Grocy shopping list' action."
+          "grocy_shopping_sync_interval": "1–1440 minutes. Can also be triggered any time with the 'Transfer Grocy shopping list' action.",
+          "openfoodfacts_sync_enabled": "Fills missing calories and pictures (empty fields only), up to 50 products per run. Reports via notify.notify what was added or needs a look. Try the service as a dry run first."
         }
       }
     },
