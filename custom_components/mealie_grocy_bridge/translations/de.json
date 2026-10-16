@@ -1,34 +1,114 @@
 {
-  "error": {
-    "invalid_time": "Bitte eine Uhrzeit im Format HH:MM eingeben.",
-    "invalid_days_range": "Bitte einen Wert zwischen 0 und 14 Tagen eingeben.",
-    "invalid_days_ahead": "Bitte einen Wert zwischen 1 und 14 Tagen eingeben."
-  },
   "config": {
     "step": {
       "user": {
+        "title": "Mealie-Grocy Bridge verbinden",
+        "description": "Gib die Verbindungsdaten für Mealie und Grocy ein. Die Verbindung wird beim Speichern geprüft.",
         "data": {
+          "mealie_url": "Mealie-URL",
+          "mealie_token": "Mealie API-Token",
+          "grocy_url": "Grocy-URL",
+          "grocy_token": "Grocy API-Key",
+          "excluded_foods": "Basiszutaten, die ignoriert werden (kommagetrennt)",
           "todo_entity": "To-do-Liste",
           "mealplan_window_mode": "Speiseplan-Zeitraum",
-          "mealplan_window_days": "Heute + X Tage (0-14)",
+          "mealplan_window_days": "Heute + X Tage (0–14)",
           "daily_mealplan_sync_enabled": "Essensplan-Sync aktivieren",
-          "daily_mealplan_sync_time": "Uhrzeit fuer Essensplan-Sync (HH:MM)",
+          "daily_mealplan_sync_time": "Uhrzeit für Essensplan-Sync (HH:MM)",
           "mealplan_sync_mode": "Sync-Modus",
-          "mealplan_sync_weekday": "Wochentag fuer Wochen-Sync",
-          "mealplan_sync_days_ahead": "Naechste Y Tage fuer Wochen-Sync (1-14)"
+          "mealplan_sync_weekday": "Wochentag für Wochen-Sync",
+          "mealplan_sync_days_ahead": "Nächste Y Tage für Wochen-Sync (1–14)"
+        },
+        "data_description": {
+          "mealie_url": "z. B. http://192.168.1.10:9000",
+          "grocy_url": "z. B. http://192.168.1.11:9283",
+          "excluded_foods": "Passt auf ganze Wörter und Wortenden, z. B. „öl“ trifft „Olivenöl“, aber nicht „Ölsardinen“."
         }
       }
+    },
+    "error": {
+      "invalid_time": "Bitte eine Uhrzeit im Format HH:MM eingeben.",
+      "invalid_days_range": "Bitte einen Wert zwischen 0 und 14 Tagen eingeben.",
+      "invalid_days_ahead": "Bitte einen Wert zwischen 1 und 14 Tagen eingeben.",
+      "mealie_cannot_connect": "Mealie ist unter dieser URL nicht erreichbar.",
+      "mealie_invalid_auth": "Mealie hat den API-Token abgelehnt.",
+      "grocy_cannot_connect": "Grocy ist unter dieser URL nicht erreichbar.",
+      "grocy_invalid_auth": "Grocy hat den API-Key abgelehnt."
+    },
+    "abort": {
+      "single_instance_allowed": "Die Bridge ist bereits eingerichtet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Mealie-Grocy Bridge Optionen",
+        "data": {
+          "mealie_url": "Mealie-URL",
+          "mealie_token": "Mealie API-Token",
+          "grocy_url": "Grocy-URL",
+          "grocy_token": "Grocy API-Key",
+          "excluded_foods": "Basiszutaten, die ignoriert werden (kommagetrennt)",
+          "todo_entity": "To-do-Liste",
+          "mealplan_window_mode": "Speiseplan-Zeitraum",
+          "mealplan_window_days": "Heute + X Tage (0–14)",
+          "daily_mealplan_sync_enabled": "Essensplan-Sync aktivieren",
+          "daily_mealplan_sync_time": "Uhrzeit für Essensplan-Sync (HH:MM)",
+          "mealplan_sync_mode": "Sync-Modus",
+          "mealplan_sync_weekday": "Wochentag für Wochen-Sync",
+          "mealplan_sync_days_ahead": "Nächste Y Tage für Wochen-Sync (1–14)"
+        },
+        "data_description": {
+          "mealie_url": "z. B. http://192.168.1.10:9000",
+          "grocy_url": "z. B. http://192.168.1.11:9283",
+          "excluded_foods": "Passt auf ganze Wörter und Wortenden, z. B. „öl“ trifft „Olivenöl“, aber nicht „Ölsardinen“."
+        }
+      }
+    },
+    "error": {
+      "invalid_time": "Bitte eine Uhrzeit im Format HH:MM eingeben.",
+      "invalid_days_range": "Bitte einen Wert zwischen 0 und 14 Tagen eingeben.",
+      "invalid_days_ahead": "Bitte einen Wert zwischen 1 und 14 Tagen eingeben.",
+      "mealie_cannot_connect": "Mealie ist unter dieser URL nicht erreichbar.",
+      "mealie_invalid_auth": "Mealie hat den API-Token abgelehnt.",
+      "grocy_cannot_connect": "Grocy ist unter dieser URL nicht erreichbar.",
+      "grocy_invalid_auth": "Grocy hat den API-Key abgelehnt."
     }
   },
   "services": {
-    "set_to_next_free_day": {
+    "add_missing_ingredients": {
+      "name": "Fehlende Zutaten auf die Einkaufsliste setzen",
+      "description": "Schiebt die fehlenden Zutaten eines vorgeschlagenen Rezepts auf die To-do-Liste.",
       "fields": {
+        "recipe_id": {
+          "name": "Rezept-ID",
+          "description": "Mealie-Rezept-ID (empfohlen)."
+        },
+        "recipe_index": {
+          "name": "Rezept-Index",
+          "description": "Alternativ: Position im Kochvorschläge-Sensor."
+        }
+      }
+    },
+    "set_to_next_free_day": {
+      "name": "Rezept auf nächsten freien Tag setzen",
+      "description": "Trägt ein vorgeschlagenes Rezept in den Mealie-Speiseplan ein.",
+      "fields": {
+        "recipe_id": {
+          "name": "Rezept-ID",
+          "description": "Mealie-Rezept-ID (empfohlen)."
+        },
+        "recipe_index": {
+          "name": "Rezept-Index",
+          "description": "Alternativ: Position im Kochvorschläge-Sensor."
+        },
+        "selected_date": {
+          "name": "Datum",
+          "description": "Leer = nächster freier Tag."
+        },
         "entry_type": {
-          "state": {
-            "breakfast": "Frühstück",
-            "lunch": "Mittagessen",
-            "dinner": "Abendessen"
-          }
+          "name": "Mahlzeit-Typ",
+          "description": "Typ des Speiseplan-Eintrags."
         }
       }
     }

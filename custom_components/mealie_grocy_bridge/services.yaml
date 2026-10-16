@@ -1,43 +1,57 @@
 set_to_next_free_day:
-  name: "Rezept anhand Index auf nächsten freien Tag setzen"
-  description: "Nimmt den Index des Rezepts aus dem Sensor, bucht es bei Mealie und schickt eine Push-Nachricht."
+  name: "Rezept auf nächsten freien Tag setzen"
+  description: "Trägt ein vorgeschlagenes Rezept in den Mealie-Speiseplan ein und schickt eine Push-Nachricht."
   fields:
-    recipe_index:
-      name: "Rezept Index"
-      description: "Die Position des Rezepts im Kochvorschläge-Sensor (z.B. 0 für das erste Rezept)."
-      required: true
-      selector:
-        number:
-          min: 0
-          max: 20
-          mode: box
-    selected_date:
-      name: "Datum"
-      description: "Optionales Wunschdatum im Format JJJJ-MM-TT. Leer = nÃ¤chster freier Tag."
+    recipe_id:
+      name: "Rezept-ID"
+      description: "Mealie-Rezept-ID aus dem Kochvorschläge-Sensor (empfohlen)."
       required: false
       selector:
         text:
-    entry_type:
-      name: "Mahlzeit Typ"
-      description: "Optionaler Typ wie breakfast, lunch oder dinner."
+    recipe_index:
+      name: "Rezept-Index"
+      description: "Alternativ: Position des Rezepts im Kochvorschläge-Sensor (0 = erstes Rezept)."
       required: false
+      selector:
+        number:
+          min: 0
+          max: 500
+          mode: box
+    selected_date:
+      name: "Datum"
+      description: "Optionales Wunschdatum. Leer = nächster freier Tag."
+      required: false
+      selector:
+        date:
+    entry_type:
+      name: "Mahlzeit-Typ"
+      description: "Typ des Speiseplan-Eintrags."
+      required: false
+      default: "dinner"
       selector:
         select:
           options:
             - "breakfast"
             - "lunch"
             - "dinner"
+            - "side"
 
 add_missing_ingredients:
-  name: "Fehlende Zutaten eines Index auf To-Do-Liste setzen"
-  description: "Liest die fehlenden Zutaten des gewählten Rezept-Index aus und schiebt sie auf die To-Do-Liste."
+  name: "Fehlende Zutaten auf die Einkaufsliste setzen"
+  description: "Schiebt die fehlenden Zutaten eines vorgeschlagenen Rezepts auf die konfigurierte To-do-Liste. Bereits offene Einträge werden übersprungen."
   fields:
+    recipe_id:
+      name: "Rezept-ID"
+      description: "Mealie-Rezept-ID aus dem Kochvorschläge-Sensor (empfohlen)."
+      required: false
+      selector:
+        text:
     recipe_index:
-      name: "Rezept Index"
-      description: "Die Position des Rezepts im Kochvorschläge-Sensor (z.B. 0 für das erste Rezept)."
-      required: true
+      name: "Rezept-Index"
+      description: "Alternativ: Position des Rezepts im Kochvorschläge-Sensor (0 = erstes Rezept)."
+      required: false
       selector:
         number:
           min: 0
-          max: 20
+          max: 500
           mode: box
