@@ -185,11 +185,11 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         if mode == MEALPLAN_WINDOW_NEXT_WEEK:
             start = current_week_end
             end = start + timedelta(days=7)
-            label = "Naechste Woche"
+            label = "Nächste Woche"
         elif mode == MEALPLAN_WINDOW_CURRENT_AND_NEXT_WEEK:
             start = current_week_start
             end = current_week_end + timedelta(days=7)
-            label = "Aktuelle und naechste Woche"
+            label = "Aktuelle und nächste Woche"
         elif mode == MEALPLAN_WINDOW_TODAY_PLUS_DAYS:
             try:
                 days = int(config_entry_data.get(CONF_MEALPLAN_WINDOW_DAYS, 7))
@@ -991,6 +991,10 @@ class MealieGrocyBaseSensor(CoordinatorEntity, SensorEntity):
     # Recorder history. This avoids the 16 KiB Recorder attribute limit and
     # unnecessary database growth.
     _unrecorded_attributes = frozenset({MATCH_ALL})
+    # Names are shown as "<device name> <entity name>", e.g.
+    # "Mealie Grocy Bridge Kochvorschläge". Entity ids stay unchanged
+    # because they are stored in the entity registry.
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -1021,7 +1025,7 @@ class MealieGrocySensor(MealieGrocyBaseSensor):
         """Initialize the sensor."""
         super().__init__(coordinator, integration_version)
         self._attr_unique_id = f"{entry_id}_suggestions"
-        self._attr_name = "Mealie Grocy Kochvorschläge"
+        self._attr_name = "Kochvorschläge"
         self._attr_icon = "mdi:chef-hat"
 
     @property
@@ -1050,7 +1054,7 @@ class MealieGrocyInventorySensor(MealieGrocyBaseSensor):
         """Initialize the inventory sensor."""
         super().__init__(coordinator, integration_version)
         self._attr_unique_id = f"{entry_id}_inventory"
-        self._attr_name = "Mealie Grocy Bestand"
+        self._attr_name = "Bestand"
         self._attr_icon = "mdi:warehouse"
 
     @property
@@ -1091,7 +1095,7 @@ class MealieGrocyEmergencySupplySensor(MealieGrocyBaseSensor):
         """Initialize the emergency supply sensor."""
         super().__init__(coordinator, integration_version)
         self._attr_unique_id = f"{entry_id}_emergency_supply"
-        self._attr_name = "Mealie Grocy Vorrat"
+        self._attr_name = "Vorrat"
         self._attr_icon = "mdi:shield-check-outline"
 
     @property
