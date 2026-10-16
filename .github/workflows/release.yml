@@ -1,0 +1,64 @@
+name: Release
+
+# Legt zu jeder neuen Version in manifest.json automatisch Tag und Release an.
+# Die Release-Beschreibung stammt aus dem passenden Abschnitt "Ab Version x.y.z" der README.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - custom_components/mealie_grocy_bridge/manifest.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version lesen
+        id: version
+        run: |
+          version=$(python3 -c "import json; print(json.load(open('custom_components/mealie_grocy_bridge/manifest.json'))['version'])")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Prüfen, ob das Release schon existiert
+        id: exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Release-Beschreibung aus der README
+        if: steps.exists.outputs.exists == 'false'
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          python3 - "$version" > release_notes.md <<'PY'
+          import re, sys
+          version = sys.argv[1]
+          lines = open("README.md", encoding="utf-8").read().splitlines()
+          start = next((i for i, l in enumerate(lines) if l.startswith(f"- **Ab Version {version}**")), None)
+          out = []
+          if start is not None:
+              for l in lines[start + 1:]:
+                  if l.startswith("- **Ab Version") or l.startswith("---") or (l and not l.startswith(" ")):
+                      break
+                  out.append(re.sub(r"^  ", "", l))
+          print("\n".join(out).strip() or f"Version {version}")
+          PY
+          cat release_notes.md
+
+      - name: Release erstellen
+        if: steps.exists.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          gh release create "$version" --target "${{ github.sha }}" --title "$version" --notes-file release_notes.md
