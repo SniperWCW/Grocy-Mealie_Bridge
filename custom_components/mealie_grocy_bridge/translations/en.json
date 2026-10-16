@@ -17,12 +17,17 @@
           "daily_mealplan_sync_time": "Meal plan sync time (HH:MM)",
           "mealplan_sync_mode": "Sync mode",
           "mealplan_sync_weekday": "Weekday for weekly sync",
-          "mealplan_sync_days_ahead": "Next Y days for weekly sync (1–14)"
+          "mealplan_sync_days_ahead": "Next Y days for weekly sync (1–14)",
+          "grocy_shopping_sync_enabled": "Transfer Grocy shopping list",
+          "grocy_shopping_sync_interval": "Grocy shopping list interval (minutes)",
+          "grocy_shopping_after_transfer": "After transfer in Grocy"
         },
         "data_description": {
           "mealie_url": "e.g. http://192.168.1.10:9000",
           "grocy_url": "e.g. http://192.168.1.11:9283",
-          "excluded_foods": "Matches whole words and word endings, e.g. 'öl' matches 'Olivenöl'."
+          "excluded_foods": "Matches whole words and word endings, e.g. 'öl' matches 'Olivenöl'.",
+          "grocy_shopping_sync_enabled": "Regularly copies the Grocy shopping list to the to-do list.",
+          "grocy_shopping_sync_interval": "1–1440 minutes. Can also be triggered any time with the 'Transfer Grocy shopping list' action."
         }
       }
     },
@@ -33,7 +38,8 @@
       "mealie_cannot_connect": "Cannot reach Mealie at this URL.",
       "mealie_invalid_auth": "Mealie rejected the API token.",
       "grocy_cannot_connect": "Cannot reach Grocy at this URL.",
-      "grocy_invalid_auth": "Grocy rejected the API key."
+      "grocy_invalid_auth": "Grocy rejected the API key.",
+      "invalid_interval": "Please enter a value between 1 and 1440 minutes."
     },
     "abort": {
       "single_instance_allowed": "The bridge is already configured."
@@ -56,12 +62,17 @@
           "daily_mealplan_sync_time": "Meal plan sync time (HH:MM)",
           "mealplan_sync_mode": "Sync mode",
           "mealplan_sync_weekday": "Weekday for weekly sync",
-          "mealplan_sync_days_ahead": "Next Y days for weekly sync (1–14)"
+          "mealplan_sync_days_ahead": "Next Y days for weekly sync (1–14)",
+          "grocy_shopping_sync_enabled": "Transfer Grocy shopping list",
+          "grocy_shopping_sync_interval": "Grocy shopping list interval (minutes)",
+          "grocy_shopping_after_transfer": "After transfer in Grocy"
         },
         "data_description": {
           "mealie_url": "e.g. http://192.168.1.10:9000",
           "grocy_url": "e.g. http://192.168.1.11:9283",
-          "excluded_foods": "Matches whole words and word endings, e.g. 'öl' matches 'Olivenöl'."
+          "excluded_foods": "Matches whole words and word endings, e.g. 'öl' matches 'Olivenöl'.",
+          "grocy_shopping_sync_enabled": "Regularly copies the Grocy shopping list to the to-do list.",
+          "grocy_shopping_sync_interval": "1–1440 minutes. Can also be triggered any time with the 'Transfer Grocy shopping list' action."
         }
       }
     },
@@ -72,7 +83,8 @@
       "mealie_cannot_connect": "Cannot reach Mealie at this URL.",
       "mealie_invalid_auth": "Mealie rejected the API token.",
       "grocy_cannot_connect": "Cannot reach Grocy at this URL.",
-      "grocy_invalid_auth": "Grocy rejected the API key."
+      "grocy_invalid_auth": "Grocy rejected the API key.",
+      "invalid_interval": "Please enter a value between 1 and 1440 minutes."
     }
   },
   "services": {
@@ -111,6 +123,10 @@
           "description": "Meal plan entry type."
         }
       }
+    },
+    "sync_shopping_list": {
+      "name": "Transfer Grocy shopping list",
+      "description": "Immediately copies the open Grocy shopping list entries to the configured to-do list."
     }
   }
 }

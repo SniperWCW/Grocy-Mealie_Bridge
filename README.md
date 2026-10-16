@@ -24,6 +24,12 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 
 ## ✨ Neu 
 
+- **Ab Version 0.4.0**
+  - **Grocy-Einkaufsliste → To-do-Liste:** Die Bridge überträgt die Grocy-Einkaufsliste auf die konfigurierte To-do-Liste (z. B. Bring) und ersetzt damit den bisherigen n8n-Flow. Aktivierung in den Optionen, siehe Abschnitt unten
+  - Neuer Service `mealie_grocy_bridge.sync_shopping_list` (sofortige Übernahme, liefert optional eine Zusammenfassung zurück)
+  - Neues Event `mealie_grocy_bridge_shopping_list_synced` nach jedem Lauf, z. B. für Telegram-Benachrichtigungen
+  - Sensoren heißen wieder kurz („Mealie Grocy Bridge Kochvorschläge“ statt doppeltem Namen); Entity-IDs bleiben unverändert
+
 - **Ab Version 0.3.0**
   - Rezeptdetails werden zwischengespeichert und nur bei Änderungen in Mealie neu geladen – deutlich weniger API-Last und schnellerer Start
   - Grocy-Bestandseinträge kommen in einer einzigen Abfrage statt einer pro Lagerort
@@ -114,6 +120,49 @@ Liest das Attribut `missingIngredients` des ausgewählten Rezepts aus und fügt 
 
 **Parameter:**
 - `recipe_id` *(Text, empfohlen)* oder `recipe_index` *(Zahl)* – eines von beiden ist Pflicht
+
+---
+
+### 3. `mealie_grocy_bridge.sync_shopping_list`
+
+Überträgt sofort alle offenen Einträge der Grocy-Einkaufsliste auf die konfigurierte To-do-Liste. Mit „Antwort zurückgeben“ (bzw. `response_variable` in Skripten) kommt eine Zusammenfassung zurück: `transferred`, `already_on_list`, `errors`, `status`.
+
+---
+
+## 🛒 Grocy-Einkaufsliste übernehmen
+
+In den Optionen der Integration:
+
+| Option | Bedeutung |
+|---|---|
+| Grocy-Einkaufsliste übernehmen | Schaltet die automatische Übernahme ein |
+| Intervall (Minuten) | Wie oft Grocy abgefragt wird (Standard 15, 1–1440) |
+| Nach Übernahme in Grocy | „Aus Grocy löschen“ (Standard) oder „In Grocy als erledigt markieren“ |
+
+Verhalten:
+- Der Name kommt vom Grocy-Produkt, bei freien Einträgen ohne Produkt von der Notiz.
+- Die Beschreibung enthält Menge und Einheit, z. B. „2 Packung für Grocy“.
+- Steht ein Artikel schon offen auf der To-do-Liste, wird er nicht doppelt angelegt, aber trotzdem in Grocy entfernt bzw. als erledigt markiert. So taucht er nach dem Abhaken nicht wieder auf.
+- Schlägt das Hinzufügen fehl, bleibt der Eintrag in Grocy und wird beim nächsten Lauf erneut versucht.
+- Der erste Lauf startet direkt nach dem Hochfahren von Home Assistant.
+
+Beispiel-Automation für eine Benachrichtigung:
+
+```yaml
+trigger:
+  - trigger: event
+    event_type: mealie_grocy_bridge_shopping_list_synced
+condition:
+  - condition: template
+    value_template: "{{ trigger.event.data.transferred | length > 0 or trigger.event.data.errors | length > 0 }}"
+action:
+  - action: notify.notify
+    data:
+      title: "Einkaufsliste"
+      message: >
+        {{ trigger.event.data.transferred | length }} Artikel aus Grocy übernommen
+        {%- if trigger.event.data.errors %}, Fehler: {{ trigger.event.data.errors | join(', ') }}{% endif %}
+```
 
 ---
 

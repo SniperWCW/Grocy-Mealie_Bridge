@@ -22,6 +22,9 @@ from .const import (
     CONF_DAILY_MEALPLAN_SYNC_ENABLED,
     CONF_DAILY_MEALPLAN_SYNC_TIME,
     CONF_EXCLUDED_FOODS,
+    CONF_GROCY_SHOPPING_AFTER,
+    CONF_GROCY_SHOPPING_SYNC_ENABLED,
+    CONF_GROCY_SHOPPING_SYNC_INTERVAL,
     CONF_GROCY_TOKEN,
     CONF_GROCY_URL,
     CONF_MEALIE_TOKEN,
@@ -32,7 +35,10 @@ from .const import (
     CONF_MEALPLAN_WINDOW_DAYS,
     CONF_MEALPLAN_WINDOW_MODE,
     CONF_TODO_ENTITY,
+    DEFAULT_GROCY_SHOPPING_SYNC_INTERVAL,
     DOMAIN,
+    GROCY_SHOPPING_AFTER_DELETE,
+    GROCY_SHOPPING_AFTER_MARK_DONE,
     MEALPLAN_SYNC_MODE_DAILY,
     MEALPLAN_SYNC_MODE_WEEKLY,
     MEALPLAN_WINDOW_CURRENT_AND_NEXT_WEEK,
@@ -66,6 +72,11 @@ MEALPLAN_WINDOW_OPTIONS = {
 SYNC_MODE_OPTIONS = {
     MEALPLAN_SYNC_MODE_DAILY: "Täglich für heute",
     MEALPLAN_SYNC_MODE_WEEKLY: "Wöchentlich für die nächsten Y Tage",
+}
+
+SHOPPING_AFTER_OPTIONS = {
+    GROCY_SHOPPING_AFTER_DELETE: "Aus Grocy löschen",
+    GROCY_SHOPPING_AFTER_MARK_DONE: "In Grocy als erledigt markieren",
 }
 
 WEEKDAY_OPTIONS = {
@@ -115,6 +126,12 @@ def _validate_user_input(user_input: dict) -> dict:
     )
     if sync_mode == MEALPLAN_SYNC_MODE_WEEKLY and not 1 <= sync_days_ahead <= 14:
         errors[CONF_MEALPLAN_SYNC_DAYS_AHEAD] = "invalid_days_ahead"
+
+    shopping_interval = _coerce_int(
+        user_input.get(CONF_GROCY_SHOPPING_SYNC_INTERVAL, DEFAULT_GROCY_SHOPPING_SYNC_INTERVAL), -1
+    )
+    if not 1 <= shopping_interval <= 1440:
+        errors[CONF_GROCY_SHOPPING_SYNC_INTERVAL] = "invalid_interval"
 
     return errors
 
@@ -205,6 +222,28 @@ def _build_schema_fields(values: dict) -> dict:
             default=_coerce_int(values.get(CONF_MEALPLAN_SYNC_DAYS_AHEAD, 7), 7),
         ): int,
     }
+
+    schema_fields[
+        vol.Optional(
+            CONF_GROCY_SHOPPING_SYNC_ENABLED,
+            default=values.get(CONF_GROCY_SHOPPING_SYNC_ENABLED, False),
+        )
+    ] = bool
+    schema_fields[
+        vol.Optional(
+            CONF_GROCY_SHOPPING_SYNC_INTERVAL,
+            default=_coerce_int(
+                values.get(CONF_GROCY_SHOPPING_SYNC_INTERVAL, DEFAULT_GROCY_SHOPPING_SYNC_INTERVAL),
+                DEFAULT_GROCY_SHOPPING_SYNC_INTERVAL,
+            ),
+        )
+    ] = int
+    schema_fields[
+        vol.Optional(
+            CONF_GROCY_SHOPPING_AFTER,
+            default=values.get(CONF_GROCY_SHOPPING_AFTER, GROCY_SHOPPING_AFTER_DELETE),
+        )
+    ] = vol.In(SHOPPING_AFTER_OPTIONS)
 
     current_todo = values.get(CONF_TODO_ENTITY)
     if current_todo:
@@ -307,6 +346,20 @@ class MealieGrocyBridgeOptionsFlowHandler(config_entries.OptionsFlow):
                 ),
                 7,
             ),
+            CONF_GROCY_SHOPPING_SYNC_ENABLED: options.get(
+                CONF_GROCY_SHOPPING_SYNC_ENABLED,
+                data.get(CONF_GROCY_SHOPPING_SYNC_ENABLED, False),
+            ),
+            CONF_GROCY_SHOPPING_SYNC_INTERVAL: _coerce_int(
+                options.get(
+                    CONF_GROCY_SHOPPING_SYNC_INTERVAL,
+                    data.get(CONF_GROCY_SHOPPING_SYNC_INTERVAL, DEFAULT_GROCY_SHOPPING_SYNC_INTERVAL),
+                ),
+                DEFAULT_GROCY_SHOPPING_SYNC_INTERVAL,
+            ),
+            CONF_GROCY_SHOPPING_AFTER: options.get(CONF_GROCY_SHOPPING_AFTER)
+            or data.get(CONF_GROCY_SHOPPING_AFTER)
+            or GROCY_SHOPPING_AFTER_DELETE,
         }
 
         return self.async_show_form(
