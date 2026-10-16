@@ -963,7 +963,11 @@ if (!customElements.get("mealie-grocy-card")) {
 const EMERGENCY_SOURCE_URL = "https://www.ernaehrungsvorsorge.de/private-vorsorge/notvorrat/vorratskalkulator";
 const DEFAULT_CHILD_FOOD_FACTOR = 0.7;
 const DEFAULT_CHILD_DRINK_LITERS_PER_DAY = 1;
+const OIL_DENSITY = 0.92;
 
+// Reihenfolge = Priorität: passt ein Produkt auf mehrere Gruppen, zählt es nur in der ersten.
+// Suchbegriffe sind normalisiert (klein, ohne Umlaute, ß = ss). Bis 2 Zeichen zählt nur das
+// ganze Wort, 3 Zeichen der Wortanfang, ab 4 Zeichen auch ein Wortteil ("Glasnudeln" → "nudel").
 const EMERGENCY_CATEGORIES = [
   {
     id: "grain",
@@ -971,10 +975,12 @@ const EMERGENCY_CATEGORIES = [
     icon: "mdi:bread-slice-outline",
     measurement: "grams",
     adultDailyTarget: 330,
-    alternatives: ["Brot", "Knackebrot", "Reis", "Nudeln", "Haferflocken", "Kartoffeln"],
+    alternatives: ["Vollkornbrot", "Knäckebrot", "Zwieback", "Reis", "Nudeln", "Haferflocken", "Kartoffeln"],
     keywords: [
-      "brot", "knackebrot", "reis", "nudel", "hafer", "muesli", "musli", "griess", "gries",
-      "mehl", "wrap", "tortilla", "kartoffel", "couscous", "bulgur", "quinoa", "toast"
+      "brot", "zwieback", "reis", "nudel", "noodle", "ramen", "ramyun", "udon", "chapaghetti",
+      "spaghetti", "fusilli", "farfalle", "penne", "tortiglioni", "lasagne", "spatzle", "spaetzle",
+      "gnocchi", "hafer", "getreide", "muesli", "musli", "griess", "semola", "mehl", "couscous",
+      "bulgur", "quinoa", "polenta", "graupen", "kartoffel",
     ],
   },
   {
@@ -985,9 +991,9 @@ const EMERGENCY_CATEGORIES = [
     adultDailyTarget: 400,
     alternatives: ["Tomaten", "Erbsen", "Mais", "Karotten", "Sauerkraut", "Linsen", "Bohnen"],
     keywords: [
-      "gemuese", "gemuse", "tomat", "passata", "erbs", "mais", "bohn", "linse", "karott",
-      "mohrr", "paprika", "gurke", "zucchini", "sauerkraut", "rotkohl", "pilz", "champignon",
-      "kichererb", "spinat", "mangold", "brokkoli", "brocoli", "blumenkohl"
+      "gemuse", "gemuese", "tomat", "passata", "erbs", "mais", "bohn", "linse", "karott", "mohre",
+      "paprika", "gurk", "zucchini", "sauerkraut", "rotkohl", "rotkraut", "pilz", "champignon",
+      "kichererb", "spinat", "mangold", "brokkoli", "blumenkohl", "kohlrabi", "eintopf",
     ],
   },
   {
@@ -998,9 +1004,8 @@ const EMERGENCY_CATEGORIES = [
     adultDailyTarget: 250,
     alternatives: ["Apfelmus", "Trockenobst", "Birnen", "Pfirsiche", "Rosinen", "Nüsse"],
     keywords: [
-      "obst", "apfel", "birn", "pfirs", "aprik", "mandarin", "orange", "ananas", "beere",
-      "rosin", "trockenobst", "pflaum", "mango", "banan", "kirsch", "nus", "mandel",
-      "cashew", "walnuss", "haselnuss", "erdnuss"
+      "obst", "apfel", "birn", "pfirs", "aprik", "mandarin", "orange", "ananas", "beere", "rosin",
+      "pflaum", "mango", "banan", "kirsch", "nuss", "nusse", "mandel", "cashew", "pistazie",
     ],
   },
   {
@@ -1011,8 +1016,8 @@ const EMERGENCY_CATEGORIES = [
     adultDailyTarget: 260,
     alternatives: ["H-Milch", "Joghurt", "Hartkäse", "Kondensmilch", "Pflanzendrinks"],
     keywords: [
-      "milch", "joghurt", "kaese", "kase", "quark", "skyr", "kefir", "sahne", "kondensmilch",
-      "buttermilch", "mozarella", "mozzarella", "feta", "pflanzendrink", "haferdrink", "sojadrink"
+      "milch", "joghurt", "kase", "quark", "skyr", "kefir", "sahne", "mozzarella", "mozarella",
+      "feta", "pflanzendrink", "haferdrink", "sojadrink",
     ],
   },
   {
@@ -1023,9 +1028,10 @@ const EMERGENCY_CATEGORIES = [
     adultDailyTarget: 120,
     alternatives: ["Fischkonserven", "Wurst", "Eier", "Tofu", "Lupinen", "Veggie-Ersatz"],
     keywords: [
-      "fleisch", "fisch", "ei", "eier", "wurst", "schinken", "thunfisch", "makrele", "sardine",
-      "huhn", "chicken", "pute", "rind", "schwein", "tofu", "tempeh", "lupine", "seitan",
-      "hack", "salami", "frikadell", "bratwurst"
+      "fleisch", "fisch", "ei", "eier", "wurst", "wiener", "schinken", "thunfisch", "makrele",
+      "sardine", "huhn", "hahnchen", "chicken", "nugget", "pute", "rind", "schwein", "beef",
+      "corned", "gulasch", "hack", "salami", "frikadell", "schnitzel", "terrine", "garnele",
+      "prawn", "muschel", "tofu", "tempeh", "lupine", "seitan", "protein",
     ],
   },
   {
@@ -1034,10 +1040,10 @@ const EMERGENCY_CATEGORIES = [
     icon: "mdi:bottle-tonic-plus-outline",
     measurement: "grams",
     adultDailyTarget: 35,
-    alternatives: ["Öl", "Butter", "Margarine", "Schmalz", "Nussmus"],
+    alternatives: ["Olivenöl", "Sonnenblumenöl", "Rapsöl", "Butter", "Margarine", "Nussmus"],
     keywords: [
-      "oel", "ol", "olivenoel", "rapsoel", "sonnenblumenoel", "butter", "margarine",
-      "schmalz", "nussmus", "erdnussbutter", "kokosoel", "ghee"
+      "ol", "oel", "olivenol", "rapsol", "sonnenblumenol", "speiseol", "kokosol", "butter",
+      "margarine", "schmalz", "ghee", "nussmus",
     ],
   },
   {
@@ -1048,105 +1054,118 @@ const EMERGENCY_CATEGORIES = [
     adultDailyTarget: 2,
     childDailyTarget: DEFAULT_CHILD_DRINK_LITERS_PER_DAY,
     alternatives: ["Mineralwasser", "Saft", "Tee", "Kaffee", "Haltbare Schorlen"],
-    keywords: [
-      "wasser", "saft", "tee", "kaffee", "cola", "limonade", "schorle", "getraenk", "getrank",
-      "sirup", "iso", "trink"
-    ],
+    keywords: ["wasser", "saft", "nektar", "cola", "limonade", "schorle", "getrank", "sirup"],
   },
 ];
 
-const grainCategory = EMERGENCY_CATEGORIES.find((category) => category.id === "grain");
-if (grainCategory) {
-  grainCategory.alternatives = ["Vollkornbrot", "Knackebrot", "Zwieback", "Reis", "Nudeln", "Haferflocken", "Kartoffeln"];
-  grainCategory.keywords = [
-    "brot",
-    "vollkornbrot",
-    "knackebrot",
-    "zwieback",
-    "reis",
-    "nudel",
-    "hafer",
-    "haferflocken",
-    "getreideflocken",
-    "muesli",
-    "musli",
-    "griess",
-    "gries",
-    "mehl",
-    "kartoffel",
-  ];
-}
+const EMERGENCY_CATEGORY_IDS = EMERGENCY_CATEGORIES.map((category) => category.id);
+const EMERGENCY_IGNORE_IDS = ["none", "ignore", "keine", "ignorieren"];
 
-const fatsCategory = EMERGENCY_CATEGORIES.find((category) => category.id === "fats");
-if (fatsCategory) {
-  fatsCategory.alternatives = ["Olivenöl", "Sonnenblumenöl", "Rapsöl", "Butter", "Margarine", "Nussmus"];
-  fatsCategory.keywords = [
-    ...fatsCategory.keywords,
-    "olivenol",
-    "oliven",
-    "olive",
-    "rapsol",
-    "raps",
-    "sonnenblumenol",
-    "sonnenblumen",
-    "speiseoel",
-    "speiseol",
-    "erdnusspaste",
-    "kokosol",
-  ];
-}
+// Feste Regeln vor der Suchbegriff-Zuordnung, erste Regel gewinnt. category: null = zählt nie.
+// Geprüft wird der normalisierte Produktname.
+const EMERGENCY_RULES = [
+  // Haushalt und Drogerie
+  { pattern: /(reinig|spray|seife|tabs|spuler|spulmittel|pfleger|putzmittel|schimmel|backpapier|natron|zitronensaure|lebensmittelfarbe)/, category: null },
+  // Gemüseprodukte, die sonst an "sosse" oder "essig" hängen bleiben
+  { pattern: /(tomatensosse|tomatensauce|passierte tomaten|tomaten gehackt|gehackte tomaten|tomatenmark|paprikamark|essiggurk|gewurzgurk)/, category: "vegetables" },
+  // Fisch im eigenen Saft ist kein Getränk
+  { pattern: /(thunfisch|makrele|sardine|fischfilet)/, category: "protein" },
+  // Mehrdeutige Namen, die sonst in der falschen Gruppe landen
+  { pattern: /(haferdrink|hafermilch|sojadrink|mandeldrink|pflanzendrink)/, category: "milk" },
+  { pattern: /(nussmus|erdnussbutter)/, category: "fats" },
+  { pattern: /preiselbeer/, category: "fruit" },
+  { pattern: /(saft|nektar|schorle)\b/, category: "drinks" },
+  // Würzmittel, Saucen, Backzutaten, Süßes, Snacks, Kaffee – laut BLE kein Teil der Grundgruppen
+  { pattern: /(sauce|sosse|senf|pesto|ketchup|mayo|dressing|gewurz|\brub\b|maggi|bruhe|fond|bouillon|paste|sriracha|chilli|chili|essig|salz\b|pfeffer|zucker\b|backpulver|starke\b|schoko|tropfchen|creme|chips|snack|croki|\bpico\b|picco|apero|truffel|kaffee|kokosmilch|\btee\b|pancake)/, category: null },
+  // Oliven sind kein Speiseöl
+  { pattern: /\boliven?\b(?! ?ol)/, category: null },
+];
 
+// Produktgruppen aus Grocy, die ohne Konfiguration erkannt werden (normalisierter Gruppenname).
+const EMERGENCY_GROUP_DEFAULTS = [
+  { pattern: /(reinig|haushalt|drogerie|hygiene|kosmetik|tierbedarf)/, category: null },
+  { pattern: /(gewurz|sossen|saucen|snack|sussigkeit|susswaren|backzutat|kaffee)/, category: null },
+  { pattern: /(nudel|teigwar|getreide|reis|mehl|brot|backwar|kartoffel)/, category: "grain" },
+  { pattern: /(gemuse|hulsenfrucht)/, category: "vegetables" },
+  { pattern: /(obst|nuss|nusse|trockenfrucht)/, category: "fruit" },
+  { pattern: /(milch|molkerei|kase)/, category: "milk" },
+  { pattern: /(fleisch|fisch|wurst|eier|meeresfrucht)/, category: "protein" },
+  { pattern: /\b(ol|ole|oel|oele|fett|fette)\b/, category: "fats" },
+  { pattern: /(getrank|wasser|saft)/, category: "drinks" },
+];
+
+// Typische Packungsgrößen für Artikel in "Stück" oder ohne Einheit. Erste passende Zeile gewinnt.
 const EMERGENCY_UNITLESS_ESTIMATES = {
   grain: [
-    { pattern: /\b(mehl)\b/, grams: 1000 },
-    { pattern: /\b(reis|linsen|graupen|grie|hafer|muesli|musli)\b/, grams: 500 },
-    { pattern: /\b(asia nudeln|ramen|ramyun|yumyum|yum yum|udonnoodle|udon noodle|jjajang|neoguri|shin|chapaghetti|shrimp ramen|wan tan nudeln)\b/, grams: 75 },
-    { pattern: /\b(nudel|spaghetti|fusilli|farfalle|penne|rigate|tortiglioni|lasagneplatten|spatzle|spaetzle|gnocchi)\b/, grams: 500 },
-    { pattern: /\b(kartoffelpuree|kartoffelbrei)\b/, grams: 250 },
-    { pattern: /\b(brot|toast|laugenstangen|chapathi|chapati|durum|dürüm|wrap|taco)\b/, grams: 250 },
+    { pattern: /paniermehl/, grams: 400 },
+    { pattern: /mehl/, grams: 1000 },
+    { pattern: /(express reis|reis mediterran|djuvec)/, grams: 250 },
+    { pattern: /(ramen|ramyun|yumyum|yum yum|chapaghetti|neoguri|jjajang|asia nudeln|instant)/, grams: 75 },
+    { pattern: /udon/, grams: 200 },
+    { pattern: /wan tan/, grams: 250 },
+    { pattern: /kartoffelpuree|kartoffelbrei/, grams: 250 },
+    { pattern: /kartoffel/, grams: 1000 },
+    { pattern: /(reis|graupen|griess|hafer|getreide|muesli|musli|semola|couscous|bulgur|quinoa|polenta)/, grams: 500 },
+    { pattern: /(nudel|noodle|spaghetti|fusilli|farfalle|penne|tortiglioni|lasagne|spatzle|spaetzle|gnocchi)/, grams: 500 },
+    { pattern: /(brot|zwieback)/, grams: 250 },
   ],
   vegetables: [
-    { pattern: /\b(passierte tomaten|tomaten gehackt|tomatensosse|tomatensoße|tomatenmark|paprikamark)\b/, grams: 400 },
-    { pattern: /\b(erbse|mohren|möhren|mais|bohn|kichererb|linsen|sauerkraut|rotkraut|spinat|blumenkohl|gemuse|gemuese|brokk|kohlrabi|suppen)\b/, grams: 400 },
+    { pattern: /(tomatenmark|paprikamark)/, grams: 200 },
+    { pattern: /(passierte tomaten|tomaten gehackt|gehackte tomaten|tomatensosse|tomatensauce|passata)/, grams: 400 },
+    { pattern: /linse/, grams: 500 },
+    { pattern: /gurk/, grams: 300 },
   ],
   fruit: [
-    { pattern: /\b(apfelmus)\b/, grams: 360 },
-    { pattern: /\b(mandarin|orange|pfirs|aprik|ananas|sauerkirsch)\b/, grams: 300 },
-    { pattern: /\b(nuss|erdnuss|pekannuss|pistaz)\b/, grams: 200 },
+    { pattern: /apfelmus/, grams: 360 },
+    { pattern: /(mandarin|orange|pfirs|aprik|ananas|kirsch)/, grams: 300 },
+    { pattern: /(nuss|mandel|cashew|pistazie)/, grams: 200 },
   ],
   milk: [
-    { pattern: /\b(milch)\b/, grams: 1000 },
-    { pattern: /\b(sahne|schlagsahne)\b/, grams: 200 },
-    { pattern: /\b(kondensmilch)\b/, grams: 170 },
-    { pattern: /\b(kaese|käse|schmelzkase|schmelzkäse)\b/, grams: 200 },
+    { pattern: /kondensmilch/, grams: 170 },
+    { pattern: /milch/, grams: 1000 },
+    { pattern: /sahne/, grams: 200 },
+    { pattern: /kase/, grams: 200 },
   ],
   protein: [
-    { pattern: /\b(thunfisch|fischfilet|fischstabchen|fischstäbchen|corned beef)\b/, grams: 200 },
-    { pattern: /\b(wurst|würstchen|bratwurst|nurnberger|nürnberger|schinken|hack|gulasch|huhn|hahnchen|hähnchen|chicken|pute|rind|garnelen|prawns)\b/, grams: 250 },
-    { pattern: /\b(ei|eier)\b/, grams: 53 },
-    { pattern: /\b(tofu|tempeh|protein chunks)\b/, grams: 200 },
+    { pattern: /\beier?\b/, grams: 53 },
+    { pattern: /(thunfisch|makrele|sardine|fischfilet|corned beef|terrine)/, grams: 180 },
+    { pattern: /(tofu|tempeh|protein)/, grams: 200 },
   ],
   fats: [
-    { pattern: /\b(olivenol|olivenöl|sonnenblumenol|sonnenblumenöl|rapsol|rapsöl|erdnusspaste|erdnussbutter)\b/, grams: 500 },
-    { pattern: /\b(butter|margarine)\b/, grams: 250 },
+    { pattern: /(butter|margarine|schmalz)/, grams: 250 },
+    { pattern: /(ol|oel)\b/, grams: 500 },
   ],
   drinks: [
-    { pattern: /\b(wasser)\b/, liters: 1.5 },
-    { pattern: /\b(milch)\b/, liters: 1 },
-    { pattern: /\b(sahne)\b/, liters: 0.2 },
-    { pattern: /\b(kondensmilch)\b/, liters: 0.17 },
-    { pattern: /\b(mineralwasser|trinkwasser|saft|cola|limonade|schorle|getrank|getraenk)\b/, liters: 1 },
+    { pattern: /wasser/, liters: 1.5 },
+    { pattern: /(saft|nektar|cola|limonade|schorle|getrank)/, liters: 1 },
   ],
 };
 
-EMERGENCY_UNITLESS_ESTIMATES.grain = [
-  { pattern: /\b(mehl)\b/, grams: 1000 },
-  { pattern: /\b(reis|graupen|grie|hafer|muesli|musli)\b/, grams: 500 },
-  { pattern: /\b(nudel|spaghetti|fusilli|farfalle|penne|rigate|tortiglioni|lasagneplatten|spatzle|spaetzle|gnocchi)\b/, grams: 500 },
-  { pattern: /\b(kartoffelpuree|kartoffelbrei)\b/, grams: 250 },
-  { pattern: /\b(vollkornbrot|brot|knackebrot|zwieback)\b/, grams: 250 },
-  { pattern: /\b(kartoffel)\b/, grams: 1000 },
-];
+// Rückfall, wenn keine Zeile oben passt (Liter-Gruppen schätzen nie).
+const EMERGENCY_FALLBACK_GRAMS = {
+  grain: 500,
+  vegetables: 400,
+  fruit: 250,
+  milk: 250,
+  protein: 250,
+  fats: 500,
+};
+
+function normalizeEmergencyText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/ß/g, "ss")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function matchesEmergencyKeyword(tokens, keyword) {
+  if (keyword.length <= 2) return tokens.some((token) => token === keyword);
+  if (keyword.length === 3) return tokens.some((token) => token.startsWith(keyword));
+  return tokens.some((token) => token.includes(keyword));
+}
 
 class MealieGrocyEmergencyCardEditor extends LitElement {
   static get properties() {
@@ -1171,6 +1190,7 @@ class MealieGrocyEmergencyCardEditor extends LitElement {
           { name: "adults", label: "Erwachsene", selector: { number: { min: 1, max: 20, mode: "box" } } },
           { name: "children", label: "Kinder", selector: { number: { min: 0, max: 20, mode: "box" } } },
           { name: "days", label: "Tage", selector: { number: { min: 1, max: 60, mode: "box" } } },
+          { name: "water_liters", label: "Wasser extern (Liter)", selector: { number: { min: 0, max: 1000, step: 0.5, mode: "box" } } },
           { name: "collapsible", label: "Ein-/ausblendbar", selector: { boolean: {} } },
           { name: "initially_collapsed", label: "Initial eingeklappt", selector: { boolean: {} } },
         ],
@@ -1192,6 +1212,8 @@ class MealieGrocyEmergencyCardEditor extends LitElement {
       <div style="padding: 16px; border-top: 1px solid var(--divider-color); margin-top: 16px; font-size: 0.9rem; color: var(--secondary-text-color);">
         Kinder werden standardmäßig mit 70% des Erwachsenenbedarfs berechnet.
         Für Getränke wird 1 Liter pro Kind und Tag angesetzt.
+        „Wasser extern“ zählt Getränke mit, die nicht in Grocy erfasst sind.
+        Grocy-Produktgruppen lassen sich per YAML mit <code>product_groups</code> einer Gruppe zuordnen.
       </div>
     `;
   }
@@ -1199,7 +1221,7 @@ class MealieGrocyEmergencyCardEditor extends LitElement {
   _valueChanged(ev) {
     const config = { ...ev.detail.value };
 
-    ["adults", "children", "days"].forEach((key) => {
+    ["adults", "children", "days", "water_liters"].forEach((key) => {
       if (config[key] === "") delete config[key];
     });
     if (typeof config.collapsible !== "boolean") delete config.collapsible;
@@ -1533,11 +1555,12 @@ class MealieGrocyEmergencyCard extends LitElement {
     const adults = this._toPositiveInt(this.config.adults, 2);
     const children = this._toPositiveInt(this.config.children, 0, true);
     const days = this._toPositiveInt(this.config.days, 10);
+    const waterLiters = this._toNonNegativeNumber(this.config.water_liters);
     const collapsible = this.config.collapsible !== false;
     const stockItems = stateObj.attributes.stock_items || [];
-    const summary = this._buildSummary(stockItems, adults, children, days);
+    const summary = this._buildSummary(stockItems, adults, children, days, waterLiters);
     const integrationVersion = stateObj.attributes.integration_version || "unbekannt";
-    const overallCoverage = this._formatOverallCoverage(summary.overallScorePercent, summary.overallDaysCoverage);
+    const overallCoverage = this._formatOverallCoverage(summary, days);
 
     return html`
       <ha-card>
@@ -1565,7 +1588,7 @@ class MealieGrocyEmergencyCard extends LitElement {
 
             <div class="hero-stats">
               <div class="hero-stat">
-                <span class="hero-stat-label">Vollständig abgedeckt</span>
+                <span class="hero-stat-label">Notvorrat reicht für</span>
                 <div class="hero-stat-value">${overallCoverage.label}</div>
                 <div class="hero-stat-sub">${overallCoverage.detail}</div>
                 ${summary.zeroCategories.length > 0 ? html`
@@ -1605,8 +1628,8 @@ class MealieGrocyEmergencyCard extends LitElement {
 
                   <div class="meta">
                     Reicht für ca. <strong>${category.daysLabel}</strong> Tage.
-                    ${category.matchedItems.length > 0
-                      ? html`Erfasst wurden ${category.matchedItems.length} passende Produkte.`
+                    ${category.matchedCount > 0
+                      ? html`Erfasst wurden ${category.matchedCount} passende Produkte.`
                       : html`Aktuell wurde kein passendes Produkt aus Grocy erkannt.`}
                   </div>
 
@@ -1616,7 +1639,7 @@ class MealieGrocyEmergencyCard extends LitElement {
 
                   ${category.usesEstimatedAmounts ? html`
                     <div class="meta">
-                      Artikel ohne Grocy-Einheit werden aktuell mit typischen Packungsgrößen geschätzt.
+                      Artikel in Stück oder ohne Gewichtseinheit werden mit typischen Packungsgrößen geschätzt.
                     </div>
                   ` : ""}
 
@@ -1632,6 +1655,11 @@ class MealieGrocyEmergencyCard extends LitElement {
             </div>
 
             <div class="footer-note">
+              ${summary.expiredCount > 0 ? html`
+                <div class="meta alert">
+                  ${summary.expiredCount} abgelaufene Artikel werden nicht mitgezählt – bitte in Grocy prüfen.
+                </div>
+              ` : ""}
               Quelle der Richtwerte: Bundeszentrum für Ernährung / BLE.
               Der offizielle Kalkulator auf ${this._renderLink(EMERGENCY_SOURCE_URL)} nutzt Personen gesamt und Tage,
               die getrennte Erwachsenen-/Kinderlogik wird hier lokal aus den BLE-Mengen abgeleitet.
@@ -1652,6 +1680,11 @@ class MealieGrocyEmergencyCard extends LitElement {
     return html`<a href="${url}" target="_blank" rel="noreferrer">ernaehrungsvorsorge.de</a>`;
   }
 
+  _toNonNegativeNumber(value) {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }
+
   _toPositiveInt(value, fallback, allowZero = false) {
     const parsed = Number.parseInt(value, 10);
     if (Number.isNaN(parsed)) return fallback;
@@ -1659,21 +1692,31 @@ class MealieGrocyEmergencyCard extends LitElement {
     return Math.max(1, parsed);
   }
 
-  _buildSummary(stockItems, adults, children, days) {
+  _buildSummary(stockItems, adults, children, days, waterLiters = 0) {
     const usableStockItems = stockItems.filter((item) => item?.status !== "expired");
+    const groupMap = this._getProductGroupMap();
+    const itemsByCategory = new Map(EMERGENCY_CATEGORY_IDS.map((id) => [id, []]));
+    usableStockItems.forEach((item) => {
+      const categoryId = this._categorizeItem(item, groupMap);
+      if (categoryId) itemsByCategory.get(categoryId).push(item);
+    });
+
     const categories = EMERGENCY_CATEGORIES.map((category) => {
       const targetAmount = this._getCategoryTarget(category, adults, children, days);
       const dailyAmount = this._getCategoryTarget(category, adults, children, 1);
-      const matchedItems = usableStockItems
-        .filter((item) => this._matchesCategory(item, category))
+      const matchedItems = itemsByCategory.get(category.id)
         .map((item) => ({ item, convertedAmount: this._convertStockAmount(item, category) }))
-        .filter((entry) => entry.convertedAmount > 0);
-      const actualAmount = matchedItems.reduce((sum, entry) => sum + entry.convertedAmount, 0);
+        .filter((entry) => entry.convertedAmount > 0)
+        .sort((a, b) => b.convertedAmount - a.convertedAmount);
+      const externalAmount = category.id === "drinks" ? waterLiters : 0;
+      const actualAmount = matchedItems.reduce((sum, entry) => sum + entry.convertedAmount, 0) + externalAmount;
       const rawScore = targetAmount > 0 ? (actualAmount / targetAmount) * 100 : 0;
       const scorePercent = Math.max(0, Math.min(100, rawScore));
       const daysCoverage = dailyAmount > 0 ? actualAmount / dailyAmount : 0;
       const tone = scorePercent >= 100 ? "" : scorePercent >= 50 ? "low" : "critical";
       const progressPercent = scorePercent <= 0 ? 0 : Math.max(4, Math.min(100, Math.round(scorePercent)));
+      const matchedNames = matchedItems.map((entry) => entry.item.name);
+      if (externalAmount > 0) matchedNames.unshift(`Wasser extern (${this._formatMeasuredAmount(externalAmount, "liters")})`);
 
       return {
         ...category,
@@ -1688,7 +1731,8 @@ class MealieGrocyEmergencyCard extends LitElement {
         daysLabel: this._formatDays(daysCoverage),
         actualLabel: this._formatMeasuredAmount(actualAmount, category.measurement),
         targetLabel: this._formatMeasuredAmount(targetAmount, category.measurement),
-        matchedItems: matchedItems.slice(0, 6).map((entry) => entry.item.name),
+        matchedCount: matchedNames.length,
+        matchedItems: matchedNames.slice(0, 6),
       };
     });
 
@@ -1698,83 +1742,64 @@ class MealieGrocyEmergencyCard extends LitElement {
     const averageScorePercent = categories.length > 0
       ? categories.reduce((sum, category) => sum + category.scorePercent, 0) / categories.length
       : 0;
-    const averageDaysCoverage = categories.length > 0
-      ? categories.reduce((sum, category) => sum + category.daysCoverage, 0) / categories.length
-      : 0;
 
     return {
       categories,
       categoriesAtTarget: categories.filter((category) => category.actualAmount >= category.targetAmount).length,
-      overallDaysCoverage: averageDaysCoverage,
-      overallScorePercent: averageScorePercent,
+      averageScorePercent,
       lowestDaysCoverage: lowestCategory?.daysCoverage || 0,
       lowestCategory: lowestCategory || categories[0],
       zeroCategories: categories.filter((category) => category.scorePercent === 0),
+      expiredCount: stockItems.length - usableStockItems.length,
     };
   }
 
   _getCategoryTarget(category, adults, children, days) {
     const adultShare = category.adultDailyTarget * adults * days;
-    const childPerDay = category.childDailyTarget
-      ?? (category.measurement === "liters"
-        ? category.adultDailyTarget * DEFAULT_CHILD_FOOD_FACTOR
-        : category.adultDailyTarget * DEFAULT_CHILD_FOOD_FACTOR);
+    const childPerDay = category.childDailyTarget ?? category.adultDailyTarget * DEFAULT_CHILD_FOOD_FACTOR;
     return adultShare + (childPerDay * children * days);
   }
 
-  _matchesCategory(item, category) {
-    if (this._isExcludedCategoryMatch(item, category)) {
-      return false;
-    }
-
-    const haystack = this._normalizeText([
-      item.name,
-      item.product_group,
-      item.location,
-    ].filter(Boolean).join(" "));
-    const tokens = haystack.split(" ").filter(Boolean);
-
-    return category.keywords.some((keyword) => {
-      const normalizedKeyword = this._normalizeText(keyword);
-      if (!normalizedKeyword) return false;
-      if (normalizedKeyword.includes(" ")) return haystack.includes(normalizedKeyword);
-      if (normalizedKeyword.length <= 2) {
-        return tokens.some((token) => token === normalizedKeyword);
-      }
-      return tokens.some((token) => token === normalizedKeyword || token.startsWith(normalizedKeyword));
+  // Eigene Zuordnung aus der Kartenkonfiguration: { "Nudeln": "grain", "Gewürze": "none" }.
+  _getProductGroupMap() {
+    const configured = this.config?.product_groups;
+    const map = new Map();
+    if (!configured || typeof configured !== "object") return map;
+    Object.entries(configured).forEach(([group, target]) => {
+      const key = normalizeEmergencyText(group);
+      const value = normalizeEmergencyText(target);
+      if (!key) return;
+      if (EMERGENCY_IGNORE_IDS.includes(value)) map.set(key, null);
+      else if (EMERGENCY_CATEGORY_IDS.includes(value)) map.set(key, value);
     });
+    return map;
   }
 
-  _isExcludedCategoryMatch(item, category) {
-    const name = this._normalizeText(item?.name);
-
-    if (category.id === "drinks") {
-      if (name.includes("kaffeebohnen")) return true;
-      if (name.includes("thunfisch") || name.includes("fischfilet")) return true;
-      if (name.includes("eigenem saft")) return true;
+  // Liefert die eine Gruppe, in der ein Artikel zählt, oder null.
+  // Reihenfolge: eigene Produktgruppen-Zuordnung, bekannte Grocy-Produktgruppen,
+  // feste Regeln, Suchbegriffe in der Reihenfolge der Gruppen.
+  _categorizeItem(item, groupMap = this._getProductGroupMap()) {
+    const group = normalizeEmergencyText(item?.product_group);
+    if (group) {
+      if (groupMap.has(group)) return groupMap.get(group);
+      const groupRule = EMERGENCY_GROUP_DEFAULTS.find((rule) => rule.pattern.test(group));
+      if (groupRule) return groupRule.category;
     }
 
-    if (category.id === "grain") {
-      if (name.includes("kartoffelsnacks") || name.includes("chips")) return true;
-      if (/(asia nudeln|ramen|ramyun|chapaghetti|yumyum|yum yum|instant nudeln|instant noodle|cup noodle|5 minuten terrine|snack nudeln)/.test(name)) return true;
-      if (/(wrap|tortilla|durum|taco)/.test(name)) return true;
-    }
+    const name = normalizeEmergencyText(item?.name);
+    if (!name) return null;
+    const rule = EMERGENCY_RULES.find((entry) => entry.pattern.test(name));
+    if (rule) return rule.category;
 
-    if (category.id === "protein") {
-      if (/(asia nudeln|ramen|ramyun|chapaghetti|yumyum|yum yum|udon|wan tan nudeln)/.test(name)) return true;
-      if (/(fond|bruhe|bruehe|bouillon|suppenbasis)/.test(name)) return true;
-    }
-
-    return false;
+    const tokens = name.split(" ");
+    const category = EMERGENCY_CATEGORIES.find((entry) => (
+      entry.keywords.some((keyword) => matchesEmergencyKeyword(tokens, keyword))
+    ));
+    return category ? category.id : null;
   }
 
   _normalizeText(value) {
-    return String(value || "")
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, " ")
-      .trim();
+    return normalizeEmergencyText(value);
   }
 
   _normalizeUnit(value) {
@@ -1816,64 +1841,37 @@ class MealieGrocyEmergencyCard extends LitElement {
       return this._estimateUnitlessAmount(item, category);
     }
 
+    const density = category.id === "fats" ? OIL_DENSITY : 1;
     if (unit === "kg") return amount * 1000;
     if (unit === "g") return amount;
     if (unit === "mg") return amount / 1000;
-    if (unit === "ml") return amount * this._densityFor(item.name);
-    if (unit === "cl") return amount * 10 * this._densityFor(item.name);
-    if (unit === "dl") return amount * 100 * this._densityFor(item.name);
-    if (unit === "l") return amount * 1000 * this._densityFor(item.name);
-    if (unit === "piece") {
-      const pieceWeight = this._pieceWeightFor(item.name, category.id);
-      if (pieceWeight > 0) return amount * pieceWeight;
-      return 0;
-    }
+    if (unit === "ml") return amount * density;
+    if (unit === "cl") return amount * 10 * density;
+    if (unit === "dl") return amount * 100 * density;
+    if (unit === "l") return amount * 1000 * density;
+    // Stück, Packungen und unbekannte Einheiten: typische Packungsgröße schätzen.
     return this._estimateUnitlessAmount(item, category);
-  }
-
-  _densityFor(name) {
-    const normalized = this._normalizeText(name);
-    if (normalized.includes("oel") || normalized.includes("ol")) return 0.92;
-    return 1;
-  }
-
-  _pieceWeightFor(name, categoryId) {
-    const normalized = this._normalizeText(name);
-    if (categoryId === "protein" && (/\bei\b/.test(normalized) || /\beier\b/.test(normalized))) return 53;
-    return 0;
   }
 
   _estimateUnitlessAmount(item, category) {
     const amount = Number(item.amount) || 0;
     if (amount <= 0) return 0;
 
-    const normalizedName = this._normalizeText(item.name);
+    const normalizedName = normalizeEmergencyText(item.name);
     const estimates = EMERGENCY_UNITLESS_ESTIMATES[category.id] || [];
+    const estimate = estimates.find((entry) => entry.pattern.test(normalizedName));
 
-    for (const estimate of estimates) {
-      if (!estimate.pattern.test(normalizedName)) continue;
-      if (category.measurement === "liters" && estimate.liters) return amount * estimate.liters;
-      if (category.measurement === "grams" && estimate.grams) return amount * estimate.grams;
-    }
-
-    if (category.measurement === "liters") return 0;
-
-    const fallbackByCategory = {
-      grain: 500,
-      vegetables: 400,
-      fruit: 250,
-      milk: 250,
-      protein: 250,
-      fats: 500,
-    };
-
-    return amount * (fallbackByCategory[category.id] || 0);
+    if (category.measurement === "liters") return estimate?.liters ? amount * estimate.liters : 0;
+    if (estimate?.grams) return amount * estimate.grams;
+    return amount * (EMERGENCY_FALLBACK_GRAMS[category.id] || 0);
   }
 
   _usesEstimatedAmount(item, category) {
     const unit = this._normalizeUnit(item.unit);
-    if (!unit) return this._estimateUnitlessAmount(item, category) > 0;
-    return false;
+    const measured = category.measurement === "liters"
+      ? ["l", "ml", "cl", "dl"]
+      : ["kg", "g", "mg", "l", "ml", "cl", "dl"];
+    return !measured.includes(unit) && this._estimateUnitlessAmount(item, category) > 0;
   }
 
   _formatMeasuredAmount(amount, measurement) {
@@ -1905,19 +1903,21 @@ class MealieGrocyEmergencyCard extends LitElement {
     return `${Math.round(value)}%`;
   }
 
-  _formatOverallCoverage(scorePercent, daysCoverage) {
-    const percentLabel = this._formatPercent(scorePercent);
-    const dayLabel = this._formatCoverageLabel(daysCoverage);
-    if (!Number.isFinite(scorePercent) || scorePercent <= 0) {
+  // Der Vorrat reicht nur so lange wie die schwächste Gruppe.
+  _formatOverallCoverage(summary, targetDays) {
+    const label = this._formatCoverageLabel(summary.lowestDaysCoverage);
+    const average = this._formatPercent(summary.averageScorePercent);
+    if (!Number.isFinite(summary.lowestDaysCoverage) || summary.lowestDaysCoverage <= 0) {
       return {
-        label: "Nicht abgedeckt",
-        detail: `${percentLabel} / ${dayLabel} Durchschnittsreichweite`,
+        label,
+        detail: `${summary.lowestCategory.title} fehlt · Ø Abdeckung ${average}`,
       };
     }
 
+    const goal = summary.lowestDaysCoverage >= targetDays ? "Ziel erreicht" : `Ziel ${targetDays} Tage`;
     return {
-      label: percentLabel,
-      detail: `${dayLabel} durchschnittliche Reichweite`,
+      label,
+      detail: `begrenzt durch ${summary.lowestCategory.title} · ${goal} · Ø Abdeckung ${average}`,
     };
   }
 }

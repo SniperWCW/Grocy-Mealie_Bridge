@@ -1112,6 +1112,7 @@ class MealieGrocyEmergencySupplySensor(MealieGrocyBaseSensor):
                 "amount": item.get("amount"),
                 "unit": item.get("unit"),
                 "status": item.get("status"),
+                "best_before_date": item.get("best_before_date"),
                 "product_group": item.get("product_group"),
                 "location": item.get("location"),
             }
