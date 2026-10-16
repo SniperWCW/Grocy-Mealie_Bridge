@@ -97,6 +97,9 @@ ENRICH_OFF_SCHEMA = vol.Schema(
         vol.Optional("limit", default=OFF_DEFAULT_LIMIT): vol.All(vol.Coerce(int), vol.Range(min=1, max=500)),
         vol.Optional("include_calories", default=True): cv.boolean,
         vol.Optional("include_images", default=True): cv.boolean,
+        vol.Optional("exclude_product_groups", default=[]): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional("name_check", default=True): cv.boolean,
+        vol.Optional("confirm_barcodes", default=[]): vol.All(cv.ensure_list, [cv.string]),
     }
 )
 
@@ -617,6 +620,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             limit=call.data["limit"],
             include_calories=call.data["include_calories"],
             include_images=call.data["include_images"],
+            exclude_product_groups=call.data["exclude_product_groups"],
+            name_check=call.data["name_check"],
+            confirm_barcodes=call.data["confirm_barcodes"],
         )
         return result if call.return_response else None
 

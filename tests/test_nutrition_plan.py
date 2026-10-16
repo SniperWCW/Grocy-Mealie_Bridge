@@ -94,3 +94,40 @@ def test_picture_file_name_keeps_extension():
     assert plan.picture_file_name("400123", "https://images.off.org/x/front_de.12.400.jpg") == "off_400123.jpg"
     assert plan.picture_file_name("400123", "https://images.off.org/x/front.png?v=2") == "off_400123.png"
     assert plan.picture_file_name("400123", "https://images.off.org/x/front") == "off_400123.jpg"
+
+
+def test_names_match_catches_wrong_barcode_but_accepts_compounds():
+    # echte Fälle aus dem ersten Probelauf
+    assert not plan.names_match("Gansterrine mit Pinot Noir", "Terrine de faisan aux raisins")
+    assert plan.names_match("Japanese Style Bread Crumbs Panko Flakes", "Japanese Style Bread Crumbs Panko Flakes")
+    assert plan.names_match("Milch", "H-Milch fettarm 1,5%")
+    assert plan.names_match("Passierte Tomaten", "Tomaten passiert")
+    assert plan.names_match("Nudeln - Fusilli Bucati", "Fusilli Bucati")
+    # nichts zu vergleichen blockiert nicht
+    assert plan.names_match("", "Irgendwas")
+    assert plan.names_match("Reis", "")
+
+
+def test_excluded_groups_default_and_custom():
+    assert plan.is_excluded_group("Reinigungsmittel")
+    assert plan.is_excluded_group("Haushalt & Drogerie")
+    assert not plan.is_excluded_group("Nudeln")
+    assert not plan.is_excluded_group("")
+    assert plan.is_excluded_group("Gewürze", ["gewürz"])
+
+    products = [
+        {"id": 1, "name": "Geschirrreiniger", "product_group_id": 7},
+        {"id": 2, "name": "Fusilli", "product_group_id": 8},
+        {"id": 3, "name": "Salz", "product_group_id": 9},
+        {"id": 4, "name": "Ohne Gruppe"},
+    ]
+    groups = [{"id": 7, "name": "Reinigungsmittel"}, {"id": 8, "name": "Nudeln"}, {"id": 9, "name": "Gewürze"}]
+    kept, excluded = plan.filter_excluded_products(products, groups, ["Gewürze"])
+    assert [p["name"] for p in kept] == ["Fusilli", "Ohne Gruppe"]
+    assert excluded == ["Geschirrreiniger", "Salz"]
+
+
+def test_format_package():
+    assert plan.format_package(227.0, "g") == "227 g"
+    assert plan.format_package(1980.0, "ml") == "1980 ml"
+    assert plan.format_package(None, "g") == ""

@@ -44,6 +44,16 @@ def normalize_unit(value) -> str:
     return re.sub(r"[^a-z]", "", text)
 
 
+# Product groups that never hold food. Matched as substrings of the normalized group name.
+DEFAULT_EXCLUDED_GROUPS = (
+    "reinig", "haushalt", "drogerie", "hygiene", "kosmetik", "tierbedarf", "putz", "wasch",
+)
+_NAME_STOPWORDS = {
+    "mit", "und", "von", "the", "and", "with", "aux", "des", "les", "pro", "bio", "ohne",
+    "in", "im", "aus", "fur", "fuer", "de", "du", "la", "le", "au", "en", "da", "di",
+}
+
+
 def _to_float(value) -> float | None:
     if value is None or isinstance(value, bool):
         return None
@@ -149,6 +159,70 @@ class ProductUpdate:
     @property
     def has_changes(self) -> bool:
         return self.calories is not None or bool(self.image_url)
+
+
+def _name_tokens(text) -> list[str]:
+    folded = str(text or "").lower()
+    for src, dst in (("ä", "a"), ("ö", "o"), ("ü", "u"), ("ß", "ss"), ("é", "e"), ("è", "e"), ("ê", "e")):
+        folded = folded.replace(src, dst)
+    return [
+        token for token in re.findall(r"[a-z0-9]+", folded)
+        if len(token) >= 3 and token not in _NAME_STOPWORDS and not token.isdigit()
+    ]
+
+
+def names_match(grocy_name, off_name) -> bool:
+    """Rough check that an Open Food Facts product is the one meant in Grocy.
+
+    At least half of the meaningful words of the Grocy name must appear in the
+    Open Food Facts name (as a whole word or, from 5 letters on, as part of a
+    compound: "Gansterrine" contains "terrine"). Names are often in another
+    language, so a failed check only means "please look at this", not "wrong".
+    """
+    grocy_tokens = _name_tokens(grocy_name)
+    off_tokens = _name_tokens(off_name)
+    if not grocy_tokens or not off_tokens:
+        return True  # nothing to compare, do not block
+    matched = 0
+    for token in grocy_tokens:
+        for other in off_tokens:
+            if token == other or (len(other) >= 5 and other in token) or (len(token) >= 5 and token in other):
+                matched += 1
+                break
+    return matched / len(grocy_tokens) >= 0.5
+
+
+def is_excluded_group(group_name, extra_groups=()) -> bool:
+    """True for product groups that should be skipped (household items etc.)."""
+    name = normalize_unit(group_name)
+    if not name:
+        return False
+    patterns = list(DEFAULT_EXCLUDED_GROUPS) + [normalize_unit(group) for group in extra_groups or []]
+    return any(pattern and pattern in name for pattern in patterns)
+
+
+def filter_excluded_products(products, product_groups, extra_groups=()):
+    """Split products into (kept, names of excluded ones) by Grocy product group."""
+    group_names = {
+        str(group.get("id")): str(group.get("name") or "")
+        for group in product_groups or []
+        if isinstance(group, dict)
+    }
+    kept, excluded = [], []
+    for product in products or []:
+        group = group_names.get(str(product.get("product_group_id")), "") if isinstance(product, dict) else ""
+        if group and is_excluded_group(group, extra_groups):
+            excluded.append(str(product.get("name") or "").strip())
+        else:
+            kept.append(product)
+    return kept, sorted(excluded, key=str.lower)
+
+
+def format_package(amount, unit) -> str:
+    """Human readable package size for the report, e.g. "227 g"."""
+    if not amount or not unit:
+        return ""
+    return f"{amount:g} {unit}"
 
 
 def _is_empty_calories(value) -> bool:
