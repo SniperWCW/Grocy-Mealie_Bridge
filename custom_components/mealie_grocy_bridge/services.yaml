@@ -93,3 +93,24 @@ enrich_from_openfoodfacts:
       default: true
       selector:
         boolean:
+    exclude_product_groups:
+      name: "Produktgruppen ausschließen"
+      description: "Zusätzlich zu Reinigung, Haushalt, Drogerie, Hygiene, Kosmetik und Tierbedarf. Es genügt ein Teil des Gruppennamens."
+      required: false
+      selector:
+        text:
+          multiple: true
+    name_check:
+      name: "Namen prüfen"
+      description: "Produkte, deren Name bei Open Food Facts stark vom Grocy-Namen abweicht, nicht schreiben, sondern im Bericht unter name_mismatch melden."
+      required: false
+      default: true
+      selector:
+        boolean:
+    confirm_barcodes:
+      name: "Barcodes bestätigen"
+      description: "Barcodes aus name_mismatch, die trotz abweichendem Namen geschrieben werden sollen."
+      required: false
+      selector:
+        text:
+          multiple: true

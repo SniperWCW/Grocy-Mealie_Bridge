@@ -26,7 +26,15 @@ from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from .const import CONF_GROCY_TOKEN, CONF_GROCY_URL, DOMAIN, REQUEST_TIMEOUT, normalize_base_url
-from .nutrition_plan import parse_off_product, picture_file_name, plan_update, select_candidates
+from .nutrition_plan import (
+    filter_excluded_products,
+    format_package,
+    names_match,
+    parse_off_product,
+    picture_file_name,
+    plan_update,
+    select_candidates,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -141,6 +149,9 @@ async def async_enrich_from_openfoodfacts(
     limit: int = DEFAULT_LIMIT,
     include_calories: bool = True,
     include_images: bool = True,
+    exclude_product_groups=(),
+    name_check: bool = True,
+    confirm_barcodes=(),
 ) -> dict:
     """Look up products missing calories or pictures and (unless dry_run) fill them in Grocy."""
     lock: asyncio.Lock = runtime_data.setdefault("off_enrich_lock", asyncio.Lock())
@@ -149,23 +160,34 @@ async def async_enrich_from_openfoodfacts(
 
     async with lock:
         result = await _async_run(
-            hass, runtime_data, dry_run, max(1, int(limit)), include_calories, include_images
+            hass,
+            runtime_data,
+            dry_run,
+            max(1, int(limit)),
+            include_calories,
+            include_images,
+            exclude_product_groups,
+            name_check,
+            {str(code).strip() for code in confirm_barcodes or []},
         )
 
     runtime_data["last_off_enrichment"] = result
     hass.bus.async_fire(EVENT_OFF_ENRICHED, result)
     _LOGGER.info(
-        "Open-Food-Facts-Abgleich (%s): %s Produkte geprüft, %s mit Änderungen, %s ohne Treffer, %s offen",
+        "Open-Food-Facts-Abgleich (%s): %s Produkte geprüft, %s mit Änderungen, %s Namen prüfen, %s ohne Treffer, %s offen",
         "Probelauf" if dry_run else "geschrieben",
         result.get("processed", 0),
         len(result.get("updates", [])),
+        len(result.get("name_mismatch", [])),
         len(result.get("not_found", [])),
         result.get("remaining", 0),
     )
     return result
 
 
-async def _async_run(hass, runtime_data, dry_run, limit, include_calories, include_images) -> dict:
+async def _async_run(
+    hass, runtime_data, dry_run, limit, include_calories, include_images, exclude_groups, name_check, confirmed
+) -> dict:
     result = {
         "status": "ok",
         "dry_run": dry_run,
@@ -174,9 +196,11 @@ async def _async_run(hass, runtime_data, dry_run, limit, include_calories, inclu
         "lookups": 0,
         "remaining": 0,
         "updates": [],
+        "name_mismatch": [],
         "not_found": [],
         "skipped": [],
         "without_barcode": [],
+        "excluded_groups": [],
         "errors": [],
     }
     grocy_url = normalize_base_url(runtime_data[CONF_GROCY_URL])
@@ -184,16 +208,19 @@ async def _async_run(hass, runtime_data, dry_run, limit, include_calories, inclu
     session = async_get_clientsession(hass)
 
     try:
-        products, barcodes, quantity_units = await asyncio.gather(
+        products, barcodes, quantity_units, product_groups = await asyncio.gather(
             _grocy_get(session, f"{grocy_url}/api/objects/products", headers),
             _grocy_get(session, f"{grocy_url}/api/objects/product_barcodes", headers),
             _grocy_get(session, f"{grocy_url}/api/objects/quantity_units", headers),
+            _grocy_get(session, f"{grocy_url}/api/objects/product_groups", headers),
         )
     except (aiohttp.ClientError, TimeoutError, RuntimeError) as err:
         result["status"] = "error"
         result["errors"].append(f"Grocy nicht abrufbar: {err}")
         return result
 
+    products, excluded = filter_excluded_products(products, product_groups, exclude_groups)
+    result["excluded_groups"] = excluded
     candidates, without_barcode = select_candidates(
         products, barcodes, quantity_units, include_calories, include_images
     )
@@ -243,12 +270,22 @@ async def _async_run(hass, runtime_data, dry_run, limit, include_calories, inclu
                 "off_name": off_product.get("name", ""),
                 "stock_unit": candidate.stock_unit,
             }
+            package = format_package(off_product.get("package_amount"), off_product.get("package_unit"))
+            if package:
+                entry["package"] = package
             if update.calories is not None:
                 entry["calories"] = update.calories
             if update.image_url:
                 entry["image"] = update.image_url
             if update.notes:
                 entry["notes"] = ", ".join(update.notes)
+
+            if name_check and update.barcode not in confirmed and not names_match(
+                candidate.name, off_product.get("name", "")
+            ):
+                # Barcode may belong to another product: report, but do not write.
+                result["name_mismatch"].append(entry)
+                continue
 
             if not dry_run:
                 try:

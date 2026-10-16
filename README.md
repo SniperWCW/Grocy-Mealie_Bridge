@@ -24,6 +24,11 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 
 ## ✨ Neu 
 
+- **Ab Version 0.5.3**
+  - Open-Food-Facts-Abgleich übergeht Haushaltsartikel: Produktgruppen mit Reinigung, Haushalt, Drogerie, Hygiene, Kosmetik oder Tierbedarf im Namen werden nicht abgefragt (zusätzlich per `exclude_product_groups`)
+  - Namensprüfung: weicht der Open-Food-Facts-Name stark vom Grocy-Namen ab (falscher Barcode?), wird nichts geschrieben, sondern unter `name_mismatch` gemeldet; mit `confirm_barcodes` trotzdem übernehmen
+  - Bericht zeigt die Packungsgröße (`package`), auf der die Kalorien pro Stück beruhen
+
 - **Ab Version 0.5.2**
   - **Neuer Service `mealie_grocy_bridge.enrich_from_openfoodfacts`:** ergänzt fehlende Kalorien und Produktbilder in Grocy über den Barcode aus Open Food Facts – mit Probelauf, nur leere Felder werden gefüllt
   - (0.5.1 enthielt diesen Service versehentlich noch nicht)
@@ -176,6 +181,9 @@ data:
 | `limit` | `15` | Höchstens so viele Produkte pro Lauf |
 | `include_calories` | `true` | Kalorien ergänzen |
 | `include_images` | `true` | Produktbilder hochladen |
+| `exclude_product_groups` | leer | Weitere Produktgruppen überspringen (Teil des Namens genügt). Reinigung, Haushalt, Drogerie, Hygiene, Kosmetik und Tierbedarf sind immer ausgeschlossen |
+| `name_check` | `true` | Abweichende Namen nicht schreiben, sondern melden |
+| `confirm_barcodes` | leer | Barcodes aus `name_mismatch`, die trotzdem geschrieben werden sollen |
 
 **Kalorien:** Grocy speichert Energie pro Lagereinheit, Open Food Facts pro 100 g/ml. Bei Gramm, Kilogramm, Milliliter und Liter wird umgerechnet, bei Stück, Packung, Dose, Glas & Co. über die Packungsgröße aus Open Food Facts. Ohne Packungsgröße bleibt das Feld leer und der Bericht nennt den Grund.
 
@@ -183,7 +191,11 @@ data:
 
 **Tempo:** Open Food Facts erlaubt 15 Produktabfragen pro Minute. Die Bridge fragt höchstens alle 4,5 Sekunden ab, 15 Produkte dauern also gut eine Minute. Ergebnisse werden zwischengespeichert (Treffer 7 Tage, kein Treffer 30 Tage) – ein echter Lauf direkt nach dem Probelauf ist deshalb schnell.
 
-**Bericht** (Antwort und Event `mealie_grocy_bridge_openfoodfacts_enriched`): `updates` (geplante bzw. geschriebene Änderungen), `not_found` (Barcode bei Open Food Facts unbekannt), `skipped` (gefunden, aber nichts Verwertbares, mit Grund), `without_barcode`, `remaining` (noch offene Produkte über dem Limit), `errors`.
+**Namensprüfung:** Mindestens die Hälfte der Wörter des Grocy-Namens muss im Open-Food-Facts-Namen vorkommen (auch als Wortteil, „Gansterrine“ enthält „Terrine“). Sonst landet das Produkt unter `name_mismatch`. Das ist oft nur ein Sprachunterschied („Thunfisch“ / „Thon“) – dann den Barcode in `confirm_barcodes` eintragen. Ein echter Treffer ist dagegen ein falscher Barcode in Grocy.
+
+**Packungsgröße:** Bei Einheiten wie Stück oder Packung beruhen die Kalorien auf der Packungsgröße (`package` im Bericht). Ist ein Stück in Grocy nur ein Teil der Packung (z. B. eine einzelne Stange aus einem 8er-Pack), passt der Wert nicht – diese Produkte bitte nicht übernehmen.
+
+**Bericht** (Antwort und Event `mealie_grocy_bridge_openfoodfacts_enriched`): `updates` (geplante bzw. geschriebene Änderungen), `name_mismatch`, `excluded_groups`, `not_found` (Barcode bei Open Food Facts unbekannt), `skipped` (gefunden, aber nichts Verwertbares, mit Grund), `without_barcode`, `remaining` (noch offene Produkte über dem Limit), `errors`.
 
 Daten und Bilder von Open Food Facts stehen unter der Open Database License bzw. CC BY-SA – Quelle: Open Food Facts contributors.
 
