@@ -50,6 +50,7 @@ from .const import (
     parse_mealplan_date,
 )
 from .matching import analyze_recipe, build_products_map, normalize_list_item
+from .openfoodfacts import DEFAULT_LIMIT as OFF_DEFAULT_LIMIT, async_enrich_from_openfoodfacts
 from .shopping_sync import async_sync_shopping_list
 
 _LOGGER = logging.getLogger(__name__)
@@ -89,6 +90,14 @@ SET_NEXT_FREE_DAY_SCHEMA = vol.All(
         }
     ),
     cv.has_at_least_one_key("recipe_id", "recipe_index"),
+)
+ENRICH_OFF_SCHEMA = vol.Schema(
+    {
+        vol.Optional("dry_run", default=True): cv.boolean,
+        vol.Optional("limit", default=OFF_DEFAULT_LIMIT): vol.All(vol.Coerce(int), vol.Range(min=1, max=500)),
+        vol.Optional("include_calories", default=True): cv.boolean,
+        vol.Optional("include_images", default=True): cv.boolean,
+    }
 )
 
 
@@ -600,7 +609,25 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         result = await async_sync_shopping_list(hass, _get_active_runtime(hass))
         return result if call.return_response else None
 
+    async def enrich_from_openfoodfacts(call: ServiceCall) -> ServiceResponse:
+        result = await async_enrich_from_openfoodfacts(
+            hass,
+            _get_active_runtime(hass),
+            dry_run=call.data["dry_run"],
+            limit=call.data["limit"],
+            include_calories=call.data["include_calories"],
+            include_images=call.data["include_images"],
+        )
+        return result if call.return_response else None
+
     hass.services.async_register(DOMAIN, "add_missing_ingredients", add_missing, schema=ADD_MISSING_SCHEMA)
+    hass.services.async_register(
+        DOMAIN,
+        "enrich_from_openfoodfacts",
+        enrich_from_openfoodfacts,
+        schema=ENRICH_OFF_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
     hass.services.async_register(
         DOMAIN,
         "sync_shopping_list",
