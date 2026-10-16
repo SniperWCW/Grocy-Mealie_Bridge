@@ -119,7 +119,7 @@ test("Kalorien-Reichweite: Artikel ohne Kalorien werden benannt, Haushalt und Ab
   const summary = card._buildSummary(stock, 1, 0, 10, 0);
   assert.equal(summary.kcal.total, 3500);
   assert.deepEqual(Array.from(summary.kcal.missingNames), ["Linsen"]);
-  assert.match(summary.kcal.warning, /1 Artikel ohne Kalorien/);
+  assert.match(summary.kcal.warning, /1 Artikel ohne Kalorien.*: Linsen/);
 });
 
 test("Kalorien-Reichweite: ohne gepflegte Kalorien keine Zahl", () => {

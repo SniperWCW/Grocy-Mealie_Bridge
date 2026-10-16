@@ -1795,10 +1795,11 @@ class MealieGrocyEmergencyCard extends LitElement {
       label = this._formatCoverageLabel(days);
       detail = `${totalLabel} · ${need}`;
     }
+    const shown = missing.slice(0, 8).join(", ");
     const warning = missing.length > 0 && counted > 0
-      ? `${missing.length} Artikel ohne Kalorien in Grocy, nicht mitgezählt`
+      ? `${missing.length} Artikel ohne Kalorien in Grocy, nicht mitgezählt: ${shown}${missing.length > 8 ? " …" : ""}`
       : "";
-    return { total, days, dailyNeed, counted, missingCount: missing.length, missingNames: missing.slice(0, 6), label, detail, warning };
+    return { total, days, dailyNeed, counted, missingCount: missing.length, missingNames: missing.slice(0, 8), label, detail, warning };
   }
 
   _getCategoryTarget(category, adults, children, days) {

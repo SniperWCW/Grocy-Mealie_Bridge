@@ -24,6 +24,8 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 
 ## ✨ Neu 
 
+- **Ab Version 0.5.8**
+  - Kalorien-Reichweite nennt die Artikel ohne Kalorien in Grocy beim Namen (bis zu 8)
 - **Ab Version 0.5.7**
   - Notvorratskarte zeigt die **Kalorien-Reichweite**: Menge × kcal je Lagereinheit (Grocy-Feld „Kalorien“, z. B. per Open-Food-Facts-Abgleich gefüllt) gegen 2.200 kcal je Erwachsener und Tag, Kinder mit 70 %. Zählt nur Artikel, die in einer Gruppe der Karte zählen; Artikel ohne Kalorien werden gemeldet, Platzhalter (1 kcal) zählen nicht. Anpassbar über `kcal_per_adult`
   - Der Vorrat-Sensor liefert dafür `calories` je Artikel
