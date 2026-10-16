@@ -55,3 +55,7 @@ add_missing_ingredients:
           min: 0
           max: 500
           mode: box
+
+sync_shopping_list:
+  name: "Grocy-Einkaufsliste übernehmen"
+  description: "Überträgt die offenen Einträge der Grocy-Einkaufsliste sofort auf die konfigurierte To-do-Liste und entfernt sie danach in Grocy (je nach Option)."

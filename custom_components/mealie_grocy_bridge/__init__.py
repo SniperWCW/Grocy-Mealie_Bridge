@@ -11,11 +11,18 @@ import voluptuous as vol
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
-from homeassistant.core import CoreState, Event, HomeAssistant, ServiceCall
+from homeassistant.core import (
+    CoreState,
+    Event,
+    HomeAssistant,
+    ServiceCall,
+    ServiceResponse,
+    SupportsResponse,
+)
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.event import async_track_time_change
+from homeassistant.helpers.event import async_track_time_change, async_track_time_interval
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
@@ -24,6 +31,8 @@ from .const import (
     CONF_DAILY_MEALPLAN_SYNC_ENABLED,
     CONF_DAILY_MEALPLAN_SYNC_TIME,
     CONF_EXCLUDED_FOODS,
+    CONF_GROCY_SHOPPING_SYNC_ENABLED,
+    CONF_GROCY_SHOPPING_SYNC_INTERVAL,
     CONF_GROCY_TOKEN,
     CONF_GROCY_URL,
     CONF_MEALIE_TOKEN,
@@ -32,6 +41,7 @@ from .const import (
     CONF_MEALPLAN_SYNC_MODE,
     CONF_MEALPLAN_SYNC_WEEKDAY,
     CONF_TODO_ENTITY,
+    DEFAULT_GROCY_SHOPPING_SYNC_INTERVAL,
     DOMAIN,
     MEALPLAN_SYNC_MODE_WEEKLY,
     MEALPLAN_SYNC_MODE_DAILY,
@@ -40,6 +50,7 @@ from .const import (
     parse_mealplan_date,
 )
 from .matching import analyze_recipe, build_products_map, normalize_list_item
+from .shopping_sync import async_sync_shopping_list
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -353,6 +364,46 @@ def _setup_daily_mealplan_sync(hass: HomeAssistant, entry: ConfigEntry) -> None:
     )
 
 
+def _setup_grocy_shopping_sync(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Poll the Grocy shopping list and transfer it to the to-do list."""
+    runtime_data = _get_entry_runtime(hass, entry.entry_id)
+    if not runtime_data or not runtime_data.get(CONF_GROCY_SHOPPING_SYNC_ENABLED):
+        return
+
+    try:
+        minutes = int(runtime_data.get(CONF_GROCY_SHOPPING_SYNC_INTERVAL, DEFAULT_GROCY_SHOPPING_SYNC_INTERVAL))
+    except (TypeError, ValueError):
+        minutes = DEFAULT_GROCY_SHOPPING_SYNC_INTERVAL
+    minutes = max(1, min(minutes, 1440))
+
+    async def _handle_interval(_now) -> None:
+        await async_sync_shopping_list(hass, runtime_data)
+
+    entry.async_on_unload(
+        async_track_time_interval(hass, _handle_interval, timedelta(minutes=minutes))
+    )
+
+    if hass.state is CoreState.running:
+        entry.async_create_background_task(
+            hass, async_sync_shopping_list(hass, runtime_data), "grocy_shopping_initial_sync"
+        )
+        return
+
+    unsub_started = None
+
+    async def _initial_sync(_event: Event) -> None:
+        nonlocal unsub_started
+        unsub_started = None
+        await async_sync_shopping_list(hass, runtime_data)
+
+    def _cancel_initial_sync() -> None:
+        if unsub_started:
+            unsub_started()
+
+    unsub_started = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _initial_sync)
+    entry.async_on_unload(_cancel_initial_sync)
+
+
 def _prepare_runtime_config(config: dict) -> dict:
     """Normalize UI config into runtime-friendly values."""
     exclusions_raw = config.get(CONF_EXCLUDED_FOODS, "") or ""
@@ -545,7 +596,18 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def set_next_free_day(call: ServiceCall) -> None:
         await _handle_set_to_next_free_day(hass, call)
 
+    async def sync_shopping_list(call: ServiceCall) -> ServiceResponse:
+        result = await async_sync_shopping_list(hass, _get_active_runtime(hass))
+        return result if call.return_response else None
+
     hass.services.async_register(DOMAIN, "add_missing_ingredients", add_missing, schema=ADD_MISSING_SCHEMA)
+    hass.services.async_register(
+        DOMAIN,
+        "sync_shopping_list",
+        sync_shopping_list,
+        schema=vol.Schema({}),
+        supports_response=SupportsResponse.OPTIONAL,
+    )
     hass.services.async_register(
         DOMAIN, "set_to_next_free_day", set_next_free_day, schema=SET_NEXT_FREE_DAY_SCHEMA
     )
@@ -557,6 +619,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = _prepare_runtime_config({**entry.data, **entry.options})
     _setup_daily_mealplan_sync(hass, entry)
+    _setup_grocy_shopping_sync(hass, entry)
 
     try:
         await _async_register_frontend(hass)
