@@ -1,11 +1,24 @@
 {
   "domain": "mealie_grocy_bridge",
   "name": "Mealie Grocy Bridge",
-  "codeowners": [],
+  "codeowners": [
+    "@SniperWCW"
+  ],
   "config_flow": true,
+  "dependencies": [
+    "http",
+    "lovelace"
+  ],
+  "after_dependencies": [
+    "todo",
+    "notify"
+  ],
   "documentation": "https://github.com/SniperWCW/Grocy-Mealie_Bridge",
+  "integration_type": "service",
   "iot_class": "local_polling",
-  "version": "0.2.9",
+  "issue_tracker": "https://github.com/SniperWCW/Grocy-Mealie_Bridge/issues",
+  "requirements": [],
+  "single_config_entry": true,
   "brand_custom_images": true,
-  "requirements": []
+  "version": "0.3.0"
 }

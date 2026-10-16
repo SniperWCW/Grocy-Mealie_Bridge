@@ -1,37 +1,49 @@
 """Sensor platform for Mealie Grocy Bridge."""
-from datetime import timedelta, datetime
-import logging
-import re
+from __future__ import annotations
+
 import asyncio
-import json
-import os
+from datetime import datetime, timedelta
+import logging
 from urllib.parse import quote
+
+import aiohttp
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import MATCH_ALL
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, CoordinatorEntity, UpdateFailed
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import (
+    CoordinatorEntity,
+    DataUpdateCoordinator,
+    UpdateFailed,
+)
+from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    DOMAIN,
-    CONF_MEALIE_URL,
-    CONF_MEALIE_TOKEN,
-    CONF_GROCY_URL,
     CONF_GROCY_TOKEN,
+    CONF_GROCY_URL,
+    CONF_MEALIE_TOKEN,
+    CONF_MEALIE_URL,
     CONF_MEALPLAN_WINDOW_DAYS,
     CONF_MEALPLAN_WINDOW_MODE,
+    DOMAIN,
     MEALPLAN_WINDOW_CURRENT_AND_NEXT_WEEK,
     MEALPLAN_WINDOW_CURRENT_WEEK,
     MEALPLAN_WINDOW_NEXT_WEEK,
     MEALPLAN_WINDOW_TODAY_PLUS_DAYS,
+    REQUEST_TIMEOUT,
+    WEEKDAY_NAMES_DE,
+    normalize_base_url,
+    parse_mealplan_date,
 )
+from .matching import analyze_recipe, build_products_map, stock_status
 
 _LOGGER = logging.getLogger(__name__)
-MANIFEST_PATH = os.path.join(os.path.dirname(__file__), "manifest.json")
+RECIPE_CACHE_MAX_AGE = timedelta(hours=6)
 
 DEFAULT_BASICS = [
     "salz", "pfeffer", "wasser", "öl", "zucker", "mehl", "gewürz", "prise", "etwas",
@@ -109,27 +121,17 @@ def _normalize_unit(unit_value):
     return UNIT_ALIASES.get(raw_unit, raw_unit)
 
 
-def _read_integration_version():
-    """Read the integration version from manifest.json."""
-    try:
-        with open(MANIFEST_PATH, encoding="utf-8") as manifest_file:
-            return str(json.load(manifest_file).get("version") or "").strip()
-    except Exception as err:
-        _LOGGER.debug("Konnte Integrationsversion nicht lesen: %s", err)
-        return ""
-
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up the sensor platform."""
-    coordinator = MealieGrocyBridgeCoordinator(hass, entry.entry_id)
+    coordinator = MealieGrocyBridgeCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
 
-    # Coordinator für die __init__.py bereitstellen
-    # hass.data[DOMAIN]["coordinator"] = coordinator Update 18.05.2026
     hass.data[DOMAIN][entry.entry_id]["coordinator"] = coordinator
 
-    integration_version = await hass.async_add_executor_job(_read_integration_version)
+    integration = await async_get_integration(hass, DOMAIN)
+    integration_version = str(integration.version or "")
     async_add_entities(
         [
             MealieGrocySensor(coordinator, entry.entry_id, integration_version),
@@ -139,27 +141,29 @@ async def async_setup_entry(
                 entry.entry_id,
                 integration_version,
             ),
-        ],
-        True,
+        ]
     )
 
 
 class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
     """Class to manage fetching Mealie and Grocy data."""
 
-    def __init__(self, hass: HomeAssistant, entry_id: str) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize the coordinator."""
-        self.entry_id = entry_id
+        self.entry_id = entry.entry_id
         self.session = async_get_clientsession(hass)
         self.mealplan = []
         self.mealplan_range = {"start": None, "end": None, "mode": None, "label": None}
         self.stock_items = []
         self.inventory_items = []
         self.inventory_locations = []
-        
+        self._planned_identifiers = set()
+        self._recipe_cache = {}
+
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=entry,
             name=DOMAIN,
             update_interval=timedelta(minutes=30),
         )
@@ -316,37 +320,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
         )
 
         return recipe_meta
-
-    @staticmethod
-    def _clean_basic_ingredient(text_low, fallback):
-        """Normalize basic ingredients by stripping amounts and units."""
-        cleaned_text = str(text_low or "").lower().replace("-", " ").strip()
-        cleaned_text = re.sub(r"\s+", " ", cleaned_text)
-
-        quantity_pattern = (
-            r"^\s*(?:"
-            r"\d+\s*/\s*\d+|"
-            r"\d+[.,]?\d*|"
-            r"[¼½¾⅓⅔⅛⅜⅝⅞]"
-            r")\s*"
-        )
-        unit_pattern = (
-            r"^\s*(?:tl|el|g|kg|mg|ml|cl|dl|l|liter|bund|stück|stueck|stck|"
-            r"zehe|zehen|prise|prisen|becher|dose|päckchen|paeckchen)\b\s*"
-        )
-
-        changed = True
-        while cleaned_text and changed:
-            previous = cleaned_text
-            cleaned_text = re.sub(quantity_pattern, "", cleaned_text, flags=re.IGNORECASE)
-            cleaned_text = re.sub(unit_pattern, "", cleaned_text, flags=re.IGNORECASE)
-            cleaned_text = cleaned_text.strip(" ,.")
-            changed = cleaned_text != previous
-
-        if not cleaned_text or len(cleaned_text) <= 2:
-            cleaned_text = fallback
-
-        return cleaned_text.strip().capitalize()
 
     @staticmethod
     def _extract_stock_unit(item):
@@ -569,30 +542,6 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
             "location_source": "product_default" if location_id is not None else "unknown",
         }
 
-    async def _fetch_location_entries(self, semaphore, location_id, grocy_url, headers):
-        """Fetch all current stock entries for one location."""
-        async with semaphore:
-            try:
-                async with self.session.get(
-                    f"{grocy_url}/api/stock/locations/{location_id}/entries",
-                    headers=headers,
-                    timeout=10,
-                ) as response:
-                    if response.status == 200:
-                        return location_id, self._extract_api_items(await response.json())
-                    _LOGGER.debug(
-                        "Grocy-Bestand fuer Lagerort %s konnte nicht geladen werden (%s)",
-                        location_id,
-                        response.status,
-                    )
-            except Exception as err:
-                _LOGGER.debug(
-                    "Grocy-Bestand fuer Lagerort %s konnte nicht geladen werden: %s",
-                    location_id,
-                    err,
-                )
-            return location_id, []
-
     @staticmethod
     def _build_inventory_items(stock_items, product_locations, location_map, today=None):
         """Expand aggregated Grocy stock into one frontend item per current location."""
@@ -692,119 +641,217 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
 
         return sorted(locations.values(), key=lambda location: location["name"].casefold())
 
-    async def _fetch_recipe_details(self, semaphore, slug, mealie_url, headers):
-        """Fetch full details for a single recipe with concurrency limit and pacing."""
+    async def _fetch_stock_entries(self, grocy_url, headers):
+        """Fetch all individual Grocy stock entries in one request.
+
+        Returns None when the request fails, so the caller can fall back to
+        the slower per-location endpoint.
+        """
+        try:
+            async with self.session.get(
+                f"{grocy_url}/api/objects/stock",
+                headers=headers,
+                timeout=REQUEST_TIMEOUT,
+            ) as response:
+                if response.status == 200:
+                    return self._extract_api_items(await response.json())
+                _LOGGER.debug("Grocy-Bestandseintraege nicht abrufbar (%s)", response.status)
+        except (aiohttp.ClientError, TimeoutError) as err:
+            _LOGGER.debug("Grocy-Bestandseintraege nicht abrufbar: %s", err)
+        return None
+
+    async def _fetch_location_entries(self, semaphore, location_id, grocy_url, headers):
+        """Fetch all current stock entries for one location (fallback)."""
         async with semaphore:
             try:
-                async with self.session.get(f"{mealie_url}/api/recipes/{slug}", headers=headers, timeout=10) as res:
+                async with self.session.get(
+                    f"{grocy_url}/api/stock/locations/{location_id}/entries",
+                    headers=headers,
+                    timeout=REQUEST_TIMEOUT,
+                ) as response:
+                    if response.status == 200:
+                        return location_id, self._extract_api_items(await response.json())
+                    _LOGGER.debug(
+                        "Grocy-Bestand fuer Lagerort %s konnte nicht geladen werden (%s)",
+                        location_id,
+                        response.status,
+                    )
+            except (aiohttp.ClientError, TimeoutError) as err:
+                _LOGGER.debug(
+                    "Grocy-Bestand fuer Lagerort %s konnte nicht geladen werden: %s",
+                    location_id,
+                    err,
+                )
+            return location_id, []
+
+    async def _fetch_recipe_details(self, semaphore, slug, mealie_url, headers):
+        """Fetch full details for a single recipe with a concurrency limit."""
+        async with semaphore:
+            try:
+                async with self.session.get(
+                    f"{mealie_url}/api/recipes/{slug}",
+                    headers=headers,
+                    timeout=REQUEST_TIMEOUT,
+                ) as res:
                     if res.status == 200:
-                        # Ein ganz kurzes Delay nach dem erfolgreichen Request,
-                        # um die API und die DB-Verbindungen zu entlasten
-                        await asyncio.sleep(0.05)
                         return await res.json()
-            except Exception as err:
-                _LOGGER.error("Fehler beim Abrufen des Rezept-Details für %s: %s", slug, err)
+                    _LOGGER.debug("Rezept %s nicht abrufbar (%s)", slug, res.status)
+            except (aiohttp.ClientError, TimeoutError) as err:
+                _LOGGER.warning("Fehler beim Abrufen des Rezept-Details fuer %s: %s", slug, err)
             return None
 
-    async def _async_update_data(self):
-        """Fetch data from Grocy and Mealie and run matching algorithm."""
-        config_entry_data = self.hass.data[DOMAIN][self.entry_id]
+    async def _fetch_recipes_cached(self, recipes_list, mealie_url, headers):
+        """Return full recipe details, only re-fetching recipes that changed.
 
-        grocy_url = config_entry_data[CONF_GROCY_URL].rstrip("/")
-        if not grocy_url.startswith(("http://", "https://")):
-            grocy_url = f"http://{grocy_url}"
-            
-        grocy_token = config_entry_data[CONF_GROCY_TOKEN]
-        
-        mealie_url = config_entry_data[CONF_MEALIE_URL].rstrip("/")
-        if not mealie_url.startswith(("http://", "https://")):
-            mealie_url = f"http://{mealie_url}"
-            
-        mealie_token = config_entry_data[CONF_MEALIE_TOKEN]
+        Mealie's recipe list carries an update timestamp per recipe. Details
+        are cached per slug and re-fetched only when that timestamp changes
+        (or, if Mealie sends none, after RECIPE_CACHE_MAX_AGE).
+        """
+        now = dt_util.utcnow()
+        semaphore = asyncio.Semaphore(5)
+        wanted = {}
+        to_fetch = []
 
-        ui_exclusions = config_entry_data.get("excluded_foods_list", [])
-        basics_to_ignore = [item.lower() for item in ui_exclusions] if ui_exclusions else DEFAULT_BASICS
+        for summary in recipes_list:
+            if not isinstance(summary, dict) or not summary.get("slug"):
+                continue
+            slug = summary["slug"]
+            marker = summary.get("dateUpdated") or summary.get("updatedAt") or summary.get("updateAt")
+            wanted[slug] = marker
+            cached = self._recipe_cache.get(slug)
+            if cached and (
+                (marker and cached["marker"] == marker)
+                or (not marker and now - cached["fetched"] < RECIPE_CACHE_MAX_AGE)
+            ):
+                continue
+            to_fetch.append(slug)
 
-        grocy_headers = {"GROCY-API-KEY": grocy_token}
-        mealie_headers = {"Authorization": f"Bearer {mealie_token}"}
+        if to_fetch:
+            fetched = await asyncio.gather(
+                *[self._fetch_recipe_details(semaphore, slug, mealie_url, headers) for slug in to_fetch],
+                return_exceptions=True,
+            )
+            for slug, details in zip(to_fetch, fetched):
+                if isinstance(details, dict):
+                    self._recipe_cache[slug] = {
+                        "marker": wanted[slug],
+                        "fetched": now,
+                        "details": details,
+                    }
 
-        # =====================================================================
-        # 2. MEALIE SPEISEPLAN ABRUFEN
-        # =====================================================================
-        today = dt_util.now().date()
-        mealplan_start, mealplan_end, mealplan_mode, mealplan_label = self._resolve_mealplan_window(
-            today, config_entry_data
+        # Drop recipes that no longer exist in Mealie.
+        for slug in list(self._recipe_cache):
+            if slug not in wanted:
+                del self._recipe_cache[slug]
+
+        _LOGGER.debug(
+            "Rezepte: %s im Cache, %s neu geladen", len(self._recipe_cache), len(to_fetch)
         )
+        return [self._recipe_cache[slug]["details"] for slug in wanted if slug in self._recipe_cache]
+
+    async def _fetch_mealplan(self, mealie_url, headers, today, window):
+        """Fetch the meal plan and return (planned identifiers, window entries).
+
+        Returns None if Mealie could not be reached, so the last known
+        meal plan can be kept instead of silently showing an empty one.
+        """
+        mealplan_start, mealplan_end = window
         mealplan_url = (
             f"{mealie_url}/api/households/mealplans"
             f"?startTime={mealplan_start}&endTime={mealplan_end}&perPage=-1"
         )
-        
+        try:
+            async with self.session.get(mealplan_url, headers=headers, timeout=REQUEST_TIMEOUT) as res:
+                if res.status != 200:
+                    _LOGGER.warning("Mealie-Speiseplan nicht abrufbar (HTTP %s)", res.status)
+                    return None
+                raw_data = await res.json()
+        except (aiohttp.ClientError, TimeoutError) as err:
+            _LOGGER.warning("Mealie-Speiseplan nicht abrufbar: %s", err)
+            return None
+
         planned_identifiers = set()
         invalid_keywords = {"none", "null", "string", ""}
         selected_mealplan = []
 
-        try:
-            async with self.session.get(mealplan_url, headers=mealie_headers, timeout=10) as res:
-                if res.status == 200:
-                    raw_data = await res.json()
-                    items = self._extract_mealplan_items(raw_data)
-                    
-                    if isinstance(items, list):
-                        for plan in items:
-                            if not isinstance(plan, dict):
-                                continue
-                            plan_date_raw = plan.get("date") or plan.get("startTime") or plan.get("startDate")
-                            if not plan_date_raw:
-                                continue
+        for plan in self._extract_mealplan_items(raw_data) or []:
+            if not isinstance(plan, dict):
+                continue
+            plan_date = parse_mealplan_date(plan)
+            if plan_date is None:
+                continue
 
-                            try:
-                                plan_date = datetime.fromisoformat(
-                                    str(plan_date_raw).replace("Z", "+00:00")
-                                ).date()
-                            except ValueError:
-                                try:
-                                    plan_date = datetime.strptime(str(plan_date_raw)[:10], "%Y-%m-%d").date()
-                                except ValueError:
-                                    continue
+            if plan_date >= today:
+                r_id = str(plan.get("recipeId") or "").strip().lower()
+                if r_id not in invalid_keywords and len(r_id) > 5:
+                    planned_identifiers.add(r_id)
+                recipe_obj = plan.get("recipe")
+                if isinstance(recipe_obj, dict):
+                    for key in ("id", "slug"):
+                        val = str(recipe_obj.get(key) or "").strip().lower()
+                        if val not in invalid_keywords and len(val) > 2:
+                            planned_identifiers.add(val)
 
-                            if plan_date >= today:
-                                r_id = plan.get("recipeId")
-                                if r_id:
-                                    s_id = str(r_id).strip().lower()
-                                    if s_id not in invalid_keywords and len(s_id) > 5:
-                                        planned_identifiers.add(s_id)
-                                recipe_obj = plan.get("recipe")
-                                if isinstance(recipe_obj, dict):
-                                    for key in ["id", "slug"]:
-                                        val = recipe_obj.get(key)
-                                        if val:
-                                            s_val = str(val).strip().lower()
-                                            if s_val not in invalid_keywords and len(s_val) > 2:
-                                                planned_identifiers.add(s_val)
+            if not (mealplan_start <= plan_date <= mealplan_end):
+                continue
 
-                            if not (mealplan_start <= plan_date <= mealplan_end):
-                                continue
-
-                            recipe_meta = self._extract_mealplan_recipe_meta(plan, mealie_url)
-
-                            selected_mealplan.append({
-                                "date": plan_date.isoformat(),
-                                "dateLabel": plan_date.strftime("%d.%m.%Y"),
-                                "weekday": plan_date.strftime("%A"),
-                                "entryType": str(plan.get("entryType", "meal")).strip(),
-                                "recipeName": self._extract_recipe_name(plan),
-                                "imageUrl": recipe_meta["imageUrl"],
-                                "imageFallbackUrl": recipe_meta["imageFallbackUrl"],
-                                "prepTime": recipe_meta["prepTime"],
-                                "cookTime": recipe_meta["cookTime"],
-                                "totalTime": recipe_meta["totalTime"],
-                            })
-        except Exception as err:
-            _LOGGER.error("Fehler im Speiseplan-Filter: %s", err)
+            recipe_meta = self._extract_mealplan_recipe_meta(plan, mealie_url)
+            selected_mealplan.append(
+                {
+                    "date": plan_date.isoformat(),
+                    "dateLabel": plan_date.strftime("%d.%m.%Y"),
+                    "weekday": WEEKDAY_NAMES_DE[plan_date.weekday()],
+                    "entryType": str(plan.get("entryType", "meal")).strip(),
+                    "recipeName": self._extract_recipe_name(plan),
+                    "imageUrl": recipe_meta["imageUrl"],
+                    "imageFallbackUrl": recipe_meta["imageFallbackUrl"],
+                    "prepTime": recipe_meta["prepTime"],
+                    "cookTime": recipe_meta["cookTime"],
+                    "totalTime": recipe_meta["totalTime"],
+                }
+            )
 
         selected_mealplan.sort(key=lambda item: (item["date"], item["entryType"], item["recipeName"]))
-        self.mealplan = selected_mealplan
+        return planned_identifiers, selected_mealplan
+
+    async def _fetch_grocy_object_map(self, grocy_url, headers, object_name, builder):
+        """Fetch a Grocy object list and convert it with the given builder."""
+        try:
+            async with self.session.get(
+                f"{grocy_url}/api/objects/{object_name}",
+                headers=headers,
+                timeout=REQUEST_TIMEOUT,
+            ) as res:
+                if res.status == 200:
+                    return builder(self._extract_api_items(await res.json()))
+        except (aiohttp.ClientError, TimeoutError) as err:
+            _LOGGER.debug("Grocy %s konnten nicht geladen werden: %s", object_name, err)
+        return {}
+
+    async def _async_update_data(self):
+        """Fetch data from Grocy and Mealie and run the matching algorithm."""
+        config_entry_data = self.hass.data[DOMAIN][self.entry_id]
+
+        grocy_url = normalize_base_url(config_entry_data[CONF_GROCY_URL])
+        mealie_url = normalize_base_url(config_entry_data[CONF_MEALIE_URL])
+        grocy_headers = {"GROCY-API-KEY": config_entry_data[CONF_GROCY_TOKEN]}
+        mealie_headers = {"Authorization": f"Bearer {config_entry_data[CONF_MEALIE_TOKEN]}"}
+
+        ui_exclusions = config_entry_data.get("excluded_foods_list", [])
+        basics_to_ignore = [item.lower() for item in ui_exclusions] if ui_exclusions else DEFAULT_BASICS
+
+        # -----------------------------------------------------------------
+        # 1. Mealie Speiseplan
+        # -----------------------------------------------------------------
+        today = dt_util.now().date()
+        mealplan_start, mealplan_end, mealplan_mode, mealplan_label = self._resolve_mealplan_window(
+            today, config_entry_data
+        )
+        mealplan_result = await self._fetch_mealplan(
+            mealie_url, mealie_headers, today, (mealplan_start, mealplan_end)
+        )
+        if mealplan_result is not None:
+            self._planned_identifiers, self.mealplan = mealplan_result
         self.mealplan_range = {
             "start": mealplan_start.isoformat(),
             "end": mealplan_end.isoformat(),
@@ -812,342 +859,125 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
             "label": mealplan_label,
         }
 
-        # =====================================================================
-        # 3. GROCY BESTAND ABRUFEN
-        # =====================================================================
+        # -----------------------------------------------------------------
+        # 2. Grocy Bestand
+        # -----------------------------------------------------------------
         try:
-            async with self.session.get(f"{grocy_url}/api/stock", headers=grocy_headers, timeout=15) as res:
+            async with self.session.get(
+                f"{grocy_url}/api/stock", headers=grocy_headers, timeout=REQUEST_TIMEOUT
+            ) as res:
                 if res.status != 200:
                     raise UpdateFailed(f"Grocy API Fehler: {res.status}")
                 grocy_data = await res.json()
-        except Exception as err:
-            raise UpdateFailed(f"Verbindung zu Grocy fehlgeschlagen: {err}")
+        except (aiohttp.ClientError, TimeoutError) as err:
+            raise UpdateFailed(f"Verbindung zu Grocy fehlgeschlagen: {err}") from err
 
-        quantity_unit_map = {}
-        try:
-            async with self.session.get(f"{grocy_url}/api/objects/quantity_units", headers=grocy_headers, timeout=15) as res:
-                if res.status == 200:
-                    quantity_units_data = await res.json()
-                    quantity_unit_map = self._build_quantity_unit_map(
-                        self._extract_api_items(quantity_units_data)
-                    )
-        except Exception as err:
-            _LOGGER.debug("Grocy Mengeneinheiten konnten nicht geladen werden: %s", err)
+        quantity_unit_map, location_map, product_group_map, stock_entries = await asyncio.gather(
+            self._fetch_grocy_object_map(
+                grocy_url, grocy_headers, "quantity_units", self._build_quantity_unit_map
+            ),
+            self._fetch_grocy_object_map(grocy_url, grocy_headers, "locations", self._build_id_name_map),
+            self._fetch_grocy_object_map(
+                grocy_url, grocy_headers, "product_groups", self._build_id_name_map
+            ),
+            self._fetch_stock_entries(grocy_url, grocy_headers),
+        )
 
-        location_map = {}
-        try:
-            async with self.session.get(
-                f"{grocy_url}/api/objects/locations",
-                headers=grocy_headers,
-                timeout=15,
-            ) as res:
-                if res.status == 200:
-                    location_map = self._build_id_name_map(
-                        self._extract_api_items(await res.json())
-                    )
-        except Exception as err:
-            _LOGGER.debug("Grocy Lagerorte konnten nicht geladen werden: %s", err)
-
-        product_group_map = {}
-        try:
-            async with self.session.get(
-                f"{grocy_url}/api/objects/product_groups",
-                headers=grocy_headers,
-                timeout=15,
-            ) as res:
-                if res.status == 200:
-                    product_group_map = self._build_id_name_map(
-                        self._extract_api_items(await res.json())
-                    )
-        except Exception as err:
-            _LOGGER.debug("Grocy Produktgruppen konnten nicht geladen werden: %s", err)
-
-        grocy_products_map = {}
+        grocy_products_map = build_products_map(grocy_data, today)
         stock_items = []
-        in_one_month = today + timedelta(days=30)
-
-        for item in (grocy_data or []):
-            if isinstance(item, dict) and "product" in item:
-                product_name = item.get("product", {}).get("name")
-
-                if product_name:
-                    orig_name = str(product_name).strip()
-
-                    # Standardstatus
-                    ingredient_status = "normal"
-
-                    bbd_str = item.get("best_before_date")
-
-                    if bbd_str:
-                        try:
-                            if not bbd_str.startswith("2999"):
-                                bbd_date = datetime.strptime(
-                                    bbd_str,
-                                    "%Y-%m-%d"
-                                ).date()
-
-                                # Bereits abgelaufen
-                                if bbd_date < today:
-                                    ingredient_status = "expired"
-
-                                # Läuft bald ab
-                                elif bbd_date <= in_one_month:
-                                    ingredient_status = "expiring"
-
-                        except ValueError:
-                            pass
-
-                    grocy_products_map[orig_name.lower()] = {
-                        "orig_name": orig_name,
-                        "status": ingredient_status,
-                        "regex": re.compile(
-                            r'\b' + re.escape(orig_name.lower()) + r'\b'
-                        )
-                    }
-
-                    stock_snapshot = self._extract_stock_snapshot(
-                        item,
-                        quantity_unit_map,
-                        location_map,
-                        product_group_map,
-                    )
-                    if stock_snapshot:
-                        stock_snapshot["status"] = ingredient_status
-                        stock_items.append(stock_snapshot)
-
+        for item in grocy_data or []:
+            stock_snapshot = self._extract_stock_snapshot(
+                item, quantity_unit_map, location_map, product_group_map
+            )
+            if stock_snapshot:
+                stock_snapshot["status"] = stock_status(item.get("best_before_date"), today)
+                stock_items.append(stock_snapshot)
         stock_items.sort(key=lambda entry: entry["name"].lower())
         self.stock_items = stock_items
 
-        location_semaphore = asyncio.Semaphore(10)
-        location_entry_results = await asyncio.gather(
-            *[
-                self._fetch_location_entries(
-                    location_semaphore,
-                    location_id,
-                    grocy_url,
-                    grocy_headers,
-                )
-                for location_id in sorted(location_map)
-            ],
-            return_exceptions=True,
-        )
         product_locations = {}
-        for result in location_entry_results:
-            if isinstance(result, Exception):
+        if stock_entries is None:
+            location_semaphore = asyncio.Semaphore(10)
+            location_results = await asyncio.gather(
+                *[
+                    self._fetch_location_entries(location_semaphore, location_id, grocy_url, grocy_headers)
+                    for location_id in sorted(location_map)
+                ],
+                return_exceptions=True,
+            )
+            stock_entries = []
+            for result in location_results:
+                if isinstance(result, Exception):
+                    continue
+                location_id, rows = result
+                stock_entries.extend(
+                    {**row, "location_id": location_id} for row in rows if isinstance(row, dict)
+                )
+
+        for row in stock_entries:
+            if not isinstance(row, dict):
                 continue
-            location_id, rows = result
-            for row in rows:
-                if not isinstance(row, dict):
-                    continue
-                product_id = self._extract_product_id(row)
-                if product_id is None:
-                    continue
-                normalized_row = {**row, "location_id": location_id}
-                product_locations.setdefault(product_id, []).append(normalized_row)
+            product_id = self._extract_product_id(row)
+            if product_id is not None:
+                product_locations.setdefault(product_id, []).append(row)
+
         self.inventory_items = self._build_inventory_items(
-            stock_items,
-            product_locations,
-            location_map,
-            today,
+            stock_items, product_locations, location_map, today
         )
         self.inventory_locations = self._build_location_summaries(self.inventory_items)
 
-# =====================================================================
-        # 4. MEALIE REZEPTE ABRUFEN
-        # =====================================================================
+        # -----------------------------------------------------------------
+        # 3. Mealie Rezepte (mit Cache)
+        # -----------------------------------------------------------------
         try:
-            async with self.session.get(f"{mealie_url}/api/recipes?perPage=-1", headers=mealie_headers, timeout=15) as res:
+            async with self.session.get(
+                f"{mealie_url}/api/recipes?perPage=-1", headers=mealie_headers, timeout=REQUEST_TIMEOUT
+            ) as res:
                 if res.status != 200:
                     raise UpdateFailed(f"Mealie API Fehler: {res.status}")
                 mealie_data = await res.json()
-        except Exception as err:
-            raise UpdateFailed(f"Verbindung zu Mealie fehlgeschlagen: {err}")
+        except (aiohttp.ClientError, TimeoutError) as err:
+            raise UpdateFailed(f"Verbindung zu Mealie fehlgeschlagen: {err}") from err
 
-        recipes_list = mealie_data.get("items", [])
-        
-        # Auf 5 reduzieren – das schont Ressourcen und reicht bei 30 Min Update-Intervall locker
-        semaphore = asyncio.Semaphore(5)
-        tasks = [
-            self._fetch_recipe_details(semaphore, r.get("slug"), mealie_url, mealie_headers)
-            for r in recipes_list if r.get("slug")
-        ]
-        full_recipes = await asyncio.gather(*tasks, return_exceptions=True)
-        full_recipes = [
-            r for r in full_recipes
-            if r is not None and not isinstance(r, Exception)
-    ]
+        recipes_list = mealie_data.get("items", []) if isinstance(mealie_data, dict) else []
+        full_recipes = await self._fetch_recipes_cached(recipes_list, mealie_url, mealie_headers)
 
-        # =====================================================================
-        # 5. MATCHING ALGORITHMUS
-        # =====================================================================
+        # -----------------------------------------------------------------
+        # 4. Matching
+        # -----------------------------------------------------------------
         results = []
-
         for recipe in full_recipes:
             if not isinstance(recipe, dict):
                 continue
-                
+
             r_id = recipe.get("id")
             r_recipe_id = recipe.get("recipeId")
             r_slug = recipe.get("slug")
-            
-            is_planned = False
-            for identifier in [r_id, r_recipe_id, r_slug]:
-                if identifier:
-                    s_ident = str(identifier).strip().lower()
-                    if s_ident in planned_identifiers:
-                        is_planned = True
-                        break
-            
-            if is_planned:
+            if any(
+                str(identifier).strip().lower() in self._planned_identifiers
+                for identifier in (r_id, r_recipe_id, r_slug)
+                if identifier
+            ):
                 continue
 
-            all_ingredients = recipe.get("recipeIngredient") or recipe.get("recipeIngredients") or []
-            
-            relevant_ingredients = []
-            basic_ingredients_details = []
-
-            for ing in all_ingredients:
-                if not isinstance(ing, dict):
-                    continue
-                display_text = ing.get("display") or ing.get("note") or ing.get("originalText") or ""
-                text_low = display_text.lower()
-                
-                # Prüfen, ob die Zutat zu den Basics gehört
-                matched_basic = None
-                for basic in basics_to_ignore:
-                    if basic in text_low:
-                        matched_basic = basic
-                        break
-
-                if matched_basic:
-                    basic_ingredients_details.append(
-                        self._clean_basic_ingredient(text_low, matched_basic)
-                    )
-                    continue
-                else:
-                    if text_low:
-                        relevant_ingredients.append(ing)
-
-            if not relevant_ingredients:
+            analysis = analyze_recipe(recipe, grocy_products_map, basics_to_ignore)
+            if not analysis["relevantTotal"] or not analysis["matchCount"]:
                 continue
 
-            match_count = 0
-            has_expiring_ingredient = False
-            matching_details = []
-            missing_details = []
-
-            for ing in relevant_ingredients:
-                ing_original_text = ing.get("display") or ing.get("note") or ing.get("originalText") or ""
-                ing_text_low = str(ing_original_text).lower()
-                
-                # Extrahiere Wörter aus der Rezept-Zutat
-                ing_words = [w for w in re.split(r"[\s,()./]+", ing_text_low) if len(w) > 2 and not w.isdigit()]
-
-                found_product_info = None
-                
-                # -----------------------------------------------------------------
-                # DURCHLAUF 1: STRIKTE DIREKT-MATCHES (Wort-Grenzen)
-                # -----------------------------------------------------------------
-                for stock_low, info in grocy_products_map.items():
-                    # Harte Ausschlüsse für Suppen/Nudeln/Reis vs. Fleisch
-                    if any(nw in stock_low for nw in ["yumyum", "nudeln", "ramen", "reis"]):
-                        if any(fw in ing_text_low for fw in ["wings", "schenkel", "filet", "keulen"]):
-                            continue
-                        # Verhindert Fehlmatches im ersten Durchlauf auf allgemeine Zutaten
-                        if any(kw in stock_low for kw in ["nouilles", "spring", "asia", "happiness"]):
-                            if not any(kw in ing_text_low for kw in ["nouilles", "spring", "asia", "happiness"]):
-                                continue
-
-                    if info["regex"].search(ing_text_low):
-                        found_product_info = info
-                        break
-                        
-                # -----------------------------------------------------------------
-                # DURCHLAUF 2: INTELLIGENTES SELEKTIVES MATCHING
-                # -----------------------------------------------------------------
-                if not found_product_info:
-                    for stock_low, info in grocy_products_map.items():
-                        if any(nw in stock_low for nw in ["yumyum", "nudeln", "ramen", "reis"]):
-                            if any(fw in ing_text_low for fw in ["wings", "schenkel", "filet", "keulen"]):
-                                continue
-
-                        # Zerlege den Grocy-Namen in einzelne Wörter
-                        stock_words = [p.strip() for p in re.split(r"[\s\-,._()]+", stock_low) if len(p.strip()) > 2]
-                        if not stock_words:
-                            continue
-
-                        # SPEZIALFALL CHICKEN: Verhindert, dass "Chicken Wings" auf "Chicken Nuggets" matcht
-                        if "chicken" in ing_words and "chicken" in stock_words:
-                            if "wings" in ing_words and "wings" not in stock_words:
-                                continue
-                            if "nuggets" in ing_words and "nuggets" not in stock_words:
-                                continue
-
-                        # SPEZIALFALL NUDELN / RAMEN / YUMYUM / REIS
-                        if any(nw in stock_low for nw in ["nudeln", "ramen", "yumyum", "reis"]):
-                            if not any(nw in ing_text_low for nw in ["nudeln", "ramen", "suppe", "yumyum", "reis"]):
-                                continue
-                            
-                            # HARTER AUSSCHLUSS FÜR HOCHSPEZIFISCHE ASIA-PRODUKTE
-                            if any(kw in stock_low for kw in ["nouilles", "spring", "asia", "happiness"]):
-                                if not any(kw in ing_text_low for kw in ["nouilles", "spring", "asia", "happiness"]):
-                                    continue
-
-                            if "wan-tan" in stock_low and "wan-tan" not in ing_text_low:
-                                continue
-
-                        # Allgemeiner Abgleich mit Plural-Toleranz
-                        match_found = False
-                        for word in ing_words:
-                            for s_word in stock_words:
-                                if word == s_word or word + "n" == s_word or word + "s" == s_word or word + "en" == s_word or s_word + "n" == word or s_word + "s" == word:
-                                    found_product_info = info
-                                    match_found = True
-                                    break
-                            if match_found:
-                                break
-                        if match_found:
-                            break
-
-                # -----------------------------------------------------------------
-
-                if found_product_info:
-                    match_count += 1
-                    matching_details.append({
-                        "name": found_product_info["orig_name"],
-                        "status": found_product_info["status"]
-                    })
-
-                    if found_product_info["status"] in ["expired", "expiring"]:
-                        has_expiring_ingredient = True
-                else:
-                    # Erstes echtes Wort/Zutat sauber formatieren
-                    cleaned_ing = str(ing_original_text).strip()
-                    if cleaned_ing:
-                        formatted_ing = cleaned_ing[0].upper() + cleaned_ing[1:]
-                        missing_details.append(formatted_ing)
-
-            if match_count > 0:
-                score = round((match_count / len(relevant_ingredients)) * 100)
-                if has_expiring_ingredient:
-                    score += 15
-                    if score > 100:
-                        score = 100
-
-                ui_recipe_id = str(r_recipe_id or r_id).strip()
-
-                results.append({
-                    "recipeId": ui_recipe_id,
+            results.append(
+                {
+                    "recipeId": str(r_recipe_id or r_id).strip(),
                     "recipeName": recipe.get("name", "Unbekanntes Rezept"),
-                    "matchScore": score,
-                    "matchCount": match_count,
-                    "relevantTotal": len(relevant_ingredients),
-                    "matchingIngredients": matching_details,
-                    "missingIngredients": missing_details,
-                    "basicIngredients": list(set(basic_ingredients_details)),
+                    "matchScore": analysis["matchScore"],
+                    "matchCount": analysis["matchCount"],
+                    "relevantTotal": analysis["relevantTotal"],
+                    "matchingIngredients": analysis["matchingIngredients"],
+                    "missingIngredients": analysis["missingIngredients"],
+                    "basicIngredients": analysis["basicIngredients"],
                     "url": f"{mealie_url}/g/home/r/{r_slug or ''}",
-                    "hasExpiring": has_expiring_ingredient
-                })
+                    "hasExpiring": analysis["hasExpiring"],
+                }
+            )
 
         results.sort(key=lambda x: x["matchScore"], reverse=True)
         return results
@@ -1170,6 +1000,13 @@ class MealieGrocyBaseSensor(CoordinatorEntity, SensorEntity):
         """Initialize common coordinator and version state."""
         super().__init__(coordinator)
         self._integration_version = integration_version
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry_id)},
+            name="Mealie Grocy Bridge",
+            manufacturer="SniperWCW",
+            entry_type=DeviceEntryType.SERVICE,
+            sw_version=integration_version or None,
+        )
 
 
 class MealieGrocySensor(MealieGrocyBaseSensor):

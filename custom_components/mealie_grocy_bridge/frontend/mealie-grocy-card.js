@@ -705,10 +705,10 @@ class MealieGrocyCard extends LitElement {
                       </div>
 
                       <div class="action-buttons">
-                        <button type="button" class="btn btn-shopping" title="Zur Einkaufsliste hinzufügen" @click=${() => this._callBridgeService("add_missing_ingredients", recipe._globalIndex)}>
+                        <button type="button" class="btn btn-shopping" title="Zur Einkaufsliste hinzufügen" @click=${() => this._callBridgeService("add_missing_ingredients", recipe._globalIndex, recipe.recipeId)}>
                           <ha-icon icon="mdi:cart-plus"></ha-icon>
                         </button>
-                        <button type="button" class="btn btn-calendar" title="Zum Speiseplan hinzufügen" @click=${() => this._callBridgeService("set_to_next_free_day", recipe._globalIndex)}>
+                        <button type="button" class="btn btn-calendar" title="Zum Speiseplan hinzufügen" @click=${() => this._callBridgeService("set_to_next_free_day", recipe._globalIndex, recipe.recipeId)}>
                           <ha-icon icon="mdi:calendar-plus"></ha-icon>
                         </button>
                       </div>
@@ -794,10 +794,10 @@ class MealieGrocyCard extends LitElement {
     return 4;
   }
 
-  _callBridgeService(serviceName, index) {
-    const payload = {
-      recipe_index: index,
-    };
+  _callBridgeService(serviceName, index, recipeId) {
+    // Prefer the stable recipe id captured at render time; the index is only a
+    // fallback because the sensor order can change before the click.
+    const payload = recipeId ? { recipe_id: String(recipeId) } : { recipe_index: index };
 
     if (serviceName === "set_to_next_free_day") {
       const scheduleOption = this._getScheduleOption(index);

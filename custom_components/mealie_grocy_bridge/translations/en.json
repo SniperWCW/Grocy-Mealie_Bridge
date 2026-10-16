@@ -1,0 +1,116 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Mealie Grocy Bridge",
+        "description": "Enter the connection details for Mealie and Grocy. The connection is tested on save.",
+        "data": {
+          "mealie_url": "Mealie URL",
+          "mealie_token": "Mealie API token",
+          "grocy_url": "Grocy URL",
+          "grocy_token": "Grocy API key",
+          "excluded_foods": "Basic ingredients to ignore (comma separated)",
+          "todo_entity": "To-do list",
+          "mealplan_window_mode": "Meal plan window",
+          "mealplan_window_days": "Today + X days (0–14)",
+          "daily_mealplan_sync_enabled": "Enable meal plan sync",
+          "daily_mealplan_sync_time": "Meal plan sync time (HH:MM)",
+          "mealplan_sync_mode": "Sync mode",
+          "mealplan_sync_weekday": "Weekday for weekly sync",
+          "mealplan_sync_days_ahead": "Next Y days for weekly sync (1–14)"
+        },
+        "data_description": {
+          "mealie_url": "e.g. http://192.168.1.10:9000",
+          "grocy_url": "e.g. http://192.168.1.11:9283",
+          "excluded_foods": "Matches whole words and word endings, e.g. 'öl' matches 'Olivenöl'."
+        }
+      }
+    },
+    "error": {
+      "invalid_time": "Please enter a time as HH:MM.",
+      "invalid_days_range": "Please enter a value between 0 and 14 days.",
+      "invalid_days_ahead": "Please enter a value between 1 and 14 days.",
+      "mealie_cannot_connect": "Cannot reach Mealie at this URL.",
+      "mealie_invalid_auth": "Mealie rejected the API token.",
+      "grocy_cannot_connect": "Cannot reach Grocy at this URL.",
+      "grocy_invalid_auth": "Grocy rejected the API key."
+    },
+    "abort": {
+      "single_instance_allowed": "The bridge is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Mealie Grocy Bridge options",
+        "data": {
+          "mealie_url": "Mealie URL",
+          "mealie_token": "Mealie API token",
+          "grocy_url": "Grocy URL",
+          "grocy_token": "Grocy API key",
+          "excluded_foods": "Basic ingredients to ignore (comma separated)",
+          "todo_entity": "To-do list",
+          "mealplan_window_mode": "Meal plan window",
+          "mealplan_window_days": "Today + X days (0–14)",
+          "daily_mealplan_sync_enabled": "Enable meal plan sync",
+          "daily_mealplan_sync_time": "Meal plan sync time (HH:MM)",
+          "mealplan_sync_mode": "Sync mode",
+          "mealplan_sync_weekday": "Weekday for weekly sync",
+          "mealplan_sync_days_ahead": "Next Y days for weekly sync (1–14)"
+        },
+        "data_description": {
+          "mealie_url": "e.g. http://192.168.1.10:9000",
+          "grocy_url": "e.g. http://192.168.1.11:9283",
+          "excluded_foods": "Matches whole words and word endings, e.g. 'öl' matches 'Olivenöl'."
+        }
+      }
+    },
+    "error": {
+      "invalid_time": "Please enter a time as HH:MM.",
+      "invalid_days_range": "Please enter a value between 0 and 14 days.",
+      "invalid_days_ahead": "Please enter a value between 1 and 14 days.",
+      "mealie_cannot_connect": "Cannot reach Mealie at this URL.",
+      "mealie_invalid_auth": "Mealie rejected the API token.",
+      "grocy_cannot_connect": "Cannot reach Grocy at this URL.",
+      "grocy_invalid_auth": "Grocy rejected the API key."
+    }
+  },
+  "services": {
+    "add_missing_ingredients": {
+      "name": "Add missing ingredients to shopping list",
+      "description": "Adds the missing ingredients of a suggested recipe to the to-do list.",
+      "fields": {
+        "recipe_id": {
+          "name": "Recipe ID",
+          "description": "Mealie recipe ID (recommended)."
+        },
+        "recipe_index": {
+          "name": "Recipe index",
+          "description": "Alternative: position in the suggestions sensor."
+        }
+      }
+    },
+    "set_to_next_free_day": {
+      "name": "Schedule recipe on next free day",
+      "description": "Adds a suggested recipe to the Mealie meal plan.",
+      "fields": {
+        "recipe_id": {
+          "name": "Recipe ID",
+          "description": "Mealie recipe ID (recommended)."
+        },
+        "recipe_index": {
+          "name": "Recipe index",
+          "description": "Alternative: position in the suggestions sensor."
+        },
+        "selected_date": {
+          "name": "Date",
+          "description": "Empty = next free day."
+        },
+        "entry_type": {
+          "name": "Meal type",
+          "description": "Meal plan entry type."
+        }
+      }
+    }
+  }
+}

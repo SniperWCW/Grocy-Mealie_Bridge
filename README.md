@@ -24,6 +24,18 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 
 ## ✨ Neu 
 
+- **Ab Version 0.3.0**
+  - Rezeptdetails werden zwischengespeichert und nur bei Änderungen in Mealie neu geladen – deutlich weniger API-Last und schnellerer Start
+  - Grocy-Bestandseinträge kommen in einer einzigen Abfrage statt einer pro Lagerort
+  - Die Karte wird automatisch als Lovelace-Ressource unter `/mealie_grocy_bridge_ui/mealie-grocy-card.js` registriert (vorher defekt). Eine manuell angelegte Ressource mit anderem Pfad bitte entfernen
+  - Services akzeptieren `recipe_id` (empfohlen); `recipe_index` bleibt als Fallback. Die Karte nutzt die ID, damit nach einem Refresh nicht versehentlich ein anderes Rezept gebucht wird
+  - `add_missing_ingredients` überspringt Zutaten, die schon offen auf der Liste stehen
+  - Fällt der Mealie-Speiseplan kurz aus, bleibt der letzte Stand erhalten, statt geplante Rezepte wieder vorzuschlagen
+  - Basiszutaten treffen nur noch ganze Wörter oder Wortenden („Olivenöl“ → Öl, aber „Honigmelone“ ist kein Honig)
+  - Einrichtung prüft die Verbindung zu Mealie und Grocy; Tokens als Passwortfelder; Optionen sind übersetzt
+  - Matching-Logik in eigenes Modul `matching.py` ausgelagert, mit Unit-Tests
+  - Mindestversion Home Assistant 2024.11
+
 - **Ab Version 0.2.9**
   - Bestandssuche direkt in der Lagerortkarte, ohne zusätzliche API-Abfragen
   - Durchsucht Artikelname, Lagerort, Produktgruppe, Einheit, Menge, MHD und Status
@@ -85,21 +97,23 @@ Die Integration stellt nach der Installation zwei native Dienste zur Verfügung.
 
 ### 1. `mealie_grocy_bridge.set_to_next_free_day`
 
-Nimmt das Rezept am angegebenen Index, sucht vollautomatisch den nächsten freien Tag (Typ: Abendessen/Dinner) im Mealie-Speiseplan der kommenden 30 Tage und bucht es dort ein.
+Nimmt das angegebene Rezept, sucht vollautomatisch den nächsten freien Tag für den gewählten Mahlzeit-Typ im Mealie-Speiseplan der kommenden 30 Tage und bucht es dort ein.
 
 *Zusätzlich wird eine native Home Assistant Push-Benachrichtigung mit dem Namen des Gerichts und dem gewählten Datum versendet.*
 
 **Parameter:**
-- `recipe_index` *(Mussfeld, Zahl)*
+- `recipe_id` *(Text, empfohlen)* oder `recipe_index` *(Zahl)* – eines von beiden ist Pflicht
+- `selected_date` *(optional, Datum)*
+- `entry_type` *(optional: breakfast, lunch, dinner, side; Standard dinner)*
 
 ---
 
 ### 2. `mealie_grocy_bridge.add_missing_ingredients`
 
-Liest das Attribut `missingIngredients` des ausgewählten Rezept-Index aus und fügt jede fehlende Zutat einzeln als To-Do-Punkt zu deiner Einkaufsliste hinzu.
+Liest das Attribut `missingIngredients` des ausgewählten Rezepts aus und fügt jede fehlende Zutat einzeln als To-Do-Punkt zu deiner Einkaufsliste hinzu. Bereits offene Einträge werden übersprungen.
 
 **Parameter:**
-- `recipe_index` *(Mussfeld, Zahl)*
+- `recipe_id` *(Text, empfohlen)* oder `recipe_index` *(Zahl)* – eines von beiden ist Pflicht
 
 ---
 
@@ -158,15 +172,10 @@ Die Integration bringt eine maßgeschneiderte Lovelace-Karte (`MealieGrocyCard`)
 
 ### 1. Karte als Ressource registrieren
 
-1. **Einstellungen → Dashboards → Ressourcen**
-2. **Ressource hinzufügen**
-3. Eintragen:
-
-- **URL:**  
-  `/local/community/mealie_grocy_bridge/mealie-grocy-card.js?v=1.3`
-
-- **Typ:**  
-  `JavaScript-Modul`
+Die Integration registriert die Karte automatisch als Lovelace-Ressource
+(`/mealie_grocy_bridge_ui/mealie-grocy-card.js?v=<Version>`), sofern die
+Ressourcen im UI verwaltet werden. Nur wenn deine Ressourcen per YAML verwaltet
+werden, trage diese URL selbst als `JavaScript-Modul` ein.
 
 ---
 

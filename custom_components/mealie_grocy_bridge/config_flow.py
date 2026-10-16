@@ -1,10 +1,22 @@
 """Config flow for Mealie Grocy Bridge integration."""
 
+from __future__ import annotations
+
+import logging
 import re
 
+import aiohttp
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    EntitySelector,
+    EntitySelectorConfig,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
 
 from .const import (
     CONF_DAILY_MEALPLAN_SYNC_ENABLED,
@@ -27,7 +39,15 @@ from .const import (
     MEALPLAN_WINDOW_CURRENT_WEEK,
     MEALPLAN_WINDOW_NEXT_WEEK,
     MEALPLAN_WINDOW_TODAY_PLUS_DAYS,
+    REQUEST_TIMEOUT,
+    normalize_base_url,
 )
+
+_LOGGER = logging.getLogger(__name__)
+
+URL_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.URL))
+SECRET_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
+TODO_SELECTOR = EntitySelector(EntitySelectorConfig(domain="todo"))
 
 TIME_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 DEFAULT_EXCLUDED_FOODS = (
@@ -38,14 +58,14 @@ DEFAULT_EXCLUDED_FOODS = (
 
 MEALPLAN_WINDOW_OPTIONS = {
     MEALPLAN_WINDOW_CURRENT_WEEK: "Aktuelle Woche",
-    MEALPLAN_WINDOW_NEXT_WEEK: "Naechste Woche",
-    MEALPLAN_WINDOW_CURRENT_AND_NEXT_WEEK: "Aktuelle und naechste Woche",
+    MEALPLAN_WINDOW_NEXT_WEEK: "Nächste Woche",
+    MEALPLAN_WINDOW_CURRENT_AND_NEXT_WEEK: "Aktuelle und nächste Woche",
     MEALPLAN_WINDOW_TODAY_PLUS_DAYS: "Heute + X Tage",
 }
 
 SYNC_MODE_OPTIONS = {
-    MEALPLAN_SYNC_MODE_DAILY: "Taeglich fuer heute",
-    MEALPLAN_SYNC_MODE_WEEKLY: "Woechentlich fuer die naechsten Y Tage",
+    MEALPLAN_SYNC_MODE_DAILY: "Täglich für heute",
+    MEALPLAN_SYNC_MODE_WEEKLY: "Wöchentlich für die nächsten Y Tage",
 }
 
 WEEKDAY_OPTIONS = {
@@ -99,19 +119,59 @@ def _validate_user_input(user_input: dict) -> dict:
     return errors
 
 
-def _build_schema_fields(values: dict, todo_options: dict) -> dict:
+async def _probe(session, url: str, headers: dict) -> str | None:
+    """Return None on success or an error key."""
+    try:
+        async with session.get(url, headers=headers, timeout=REQUEST_TIMEOUT) as response:
+            if response.status in (401, 403):
+                return "invalid_auth"
+            if response.status != 200:
+                return "cannot_connect"
+    except (aiohttp.ClientError, TimeoutError) as err:
+        _LOGGER.debug("Verbindungstest fehlgeschlagen fuer %s: %s", url, err)
+        return "cannot_connect"
+    return None
+
+
+async def _validate_connection(hass: HomeAssistant, user_input: dict) -> dict:
+    """Check that Mealie and Grocy are reachable with the given credentials."""
+    session = async_get_clientsession(hass)
+    errors = {}
+
+    mealie_error = await _probe(
+        session,
+        f"{normalize_base_url(user_input[CONF_MEALIE_URL])}/api/users/self",
+        {"Authorization": f"Bearer {user_input[CONF_MEALIE_TOKEN]}"},
+    )
+    if mealie_error:
+        field = CONF_MEALIE_TOKEN if mealie_error == "invalid_auth" else CONF_MEALIE_URL
+        errors[field] = f"mealie_{mealie_error}"
+
+    grocy_error = await _probe(
+        session,
+        f"{normalize_base_url(user_input[CONF_GROCY_URL])}/api/system/info",
+        {"GROCY-API-KEY": user_input[CONF_GROCY_TOKEN]},
+    )
+    if grocy_error:
+        field = CONF_GROCY_TOKEN if grocy_error == "invalid_auth" else CONF_GROCY_URL
+        errors[field] = f"grocy_{grocy_error}"
+
+    return errors
+
+
+def _build_schema_fields(values: dict) -> dict:
     """Build the shared schema fields for setup and options."""
     schema_fields = {
         vol.Required(
             CONF_MEALIE_URL,
-            default=values.get(CONF_MEALIE_URL, "http://10.11.12.200:9000"),
-        ): str,
-        vol.Required(CONF_MEALIE_TOKEN, default=values.get(CONF_MEALIE_TOKEN, "")): str,
+            default=values.get(CONF_MEALIE_URL, "http://"),
+        ): URL_SELECTOR,
+        vol.Required(CONF_MEALIE_TOKEN, default=values.get(CONF_MEALIE_TOKEN, "")): SECRET_SELECTOR,
         vol.Required(
             CONF_GROCY_URL,
-            default=values.get(CONF_GROCY_URL, "http://10.11.12.172:9283"),
-        ): str,
-        vol.Required(CONF_GROCY_TOKEN, default=values.get(CONF_GROCY_TOKEN, "")): str,
+            default=values.get(CONF_GROCY_URL, "http://"),
+        ): URL_SELECTOR,
+        vol.Required(CONF_GROCY_TOKEN, default=values.get(CONF_GROCY_TOKEN, "")): SECRET_SELECTOR,
         vol.Optional(
             CONF_EXCLUDED_FOODS,
             default=values.get(CONF_EXCLUDED_FOODS, DEFAULT_EXCLUDED_FOODS),
@@ -146,16 +206,11 @@ def _build_schema_fields(values: dict, todo_options: dict) -> dict:
         ): int,
     }
 
-    current_todo = values.get(CONF_TODO_ENTITY, "")
-    if todo_options:
-        todo_default = (
-            current_todo if current_todo in todo_options else next(iter(todo_options))
-        )
-        schema_fields[vol.Optional(CONF_TODO_ENTITY, default=todo_default)] = vol.In(
-            todo_options
-        )
+    current_todo = values.get(CONF_TODO_ENTITY)
+    if current_todo:
+        schema_fields[vol.Optional(CONF_TODO_ENTITY, default=current_todo)] = TODO_SELECTOR
     else:
-        schema_fields[vol.Optional(CONF_TODO_ENTITY, default=current_todo)] = str
+        schema_fields[vol.Optional(CONF_TODO_ENTITY)] = TODO_SELECTOR
 
     return schema_fields
 
@@ -172,14 +227,14 @@ class MealieGrocyBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             errors = _validate_user_input(user_input)
             if not errors:
+                errors = await _validate_connection(self.hass, user_input)
+            if not errors:
                 return self.async_create_entry(
                     title="Mealie-Grocy Bridge",
                     data=user_input,
                 )
 
-        todo_entities = self.hass.states.async_entity_ids("todo")
-        todo_options = {entity: entity for entity in todo_entities} if todo_entities else {}
-        schema_fields = _build_schema_fields(user_input or {}, todo_options)
+        schema_fields = _build_schema_fields(user_input or {})
 
         return self.async_show_form(
             step_id="user",
@@ -201,6 +256,8 @@ class MealieGrocyBridgeOptionsFlowHandler(config_entries.OptionsFlow):
         """Show and persist the options form."""
         if user_input is not None:
             errors = _validate_user_input(user_input)
+            if not errors:
+                errors = await _validate_connection(self.hass, user_input)
             if errors:
                 return self.async_show_form(
                     step_id="init",
@@ -258,8 +315,5 @@ class MealieGrocyBridgeOptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     def _build_options_schema(self, values: dict):
-        """Build the options schema with optional todo selector."""
-        todo_options = {
-            entity: entity for entity in self.hass.states.async_entity_ids("todo")
-        }
-        return vol.Schema(_build_schema_fields(values, todo_options))
+        """Build the options schema."""
+        return vol.Schema(_build_schema_fields(values))
