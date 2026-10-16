@@ -24,6 +24,10 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 
 ## ✨ Neu 
 
+- **Ab Version 0.5.2**
+  - **Neuer Service `mealie_grocy_bridge.enrich_from_openfoodfacts`:** ergänzt fehlende Kalorien und Produktbilder in Grocy über den Barcode aus Open Food Facts – mit Probelauf, nur leere Felder werden gefüllt
+  - (0.5.1 enthielt diesen Service versehentlich noch nicht)
+
 - **Ab Version 0.5.0**
   - **Notvorratskarte rechnet realistisch:** Artikel in „Stück“ zählen jetzt über typische Packungsgrößen statt mit 0 g
   - Zusammengesetzte Namen werden erkannt („Glasnudeln“, „Bio-Wienerle“, „Dosenmais“); Würzmittel, Saucen, Snacks und Haushaltsartikel zählen nicht mehr mit
@@ -33,7 +37,6 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
   - Neue Option `water_liters` für Wasser, das nicht in Grocy erfasst ist
   - Hinweis auf abgelaufene Artikel; `sensor.mealie_grocy_vorrat` liefert zusätzlich `best_before_date`
   - Tests für die Kartenlogik: `node --test tests/*.mjs`
-  - **Neuer Service `mealie_grocy_bridge.enrich_from_openfoodfacts`:** ergänzt fehlende Kalorien und Produktbilder in Grocy über den Barcode aus Open Food Facts – mit Probelauf, nur leere Felder werden gefüllt
 
 - **Ab Version 0.4.0**
   - **Grocy-Einkaufsliste → To-do-Liste:** Die Bridge überträgt die Grocy-Einkaufsliste auf die konfigurierte To-do-Liste (z. B. Bring) und ersetzt damit den bisherigen n8n-Flow. Aktivierung in den Optionen, siehe Abschnitt unten
