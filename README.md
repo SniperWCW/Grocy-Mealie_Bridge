@@ -24,6 +24,10 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 
 ## ✨ Neu 
 
+- **Ab Version 0.5.5**
+  - Open-Food-Facts-Abgleich ersetzt von Grocy vorbelegte Kalorien-Platzhalter (1 kcal); Bericht zeigt alt und neu
+  - `limit` zählt nur noch echte Abfragen bei Open Food Facts, damit nicht erledigbare Produkte das Limit nicht aufbrauchen
+
 - **Ab Version 0.5.4**
   - **Wöchentlicher Open-Food-Facts-Abgleich:** in den Optionen aktivierbar (Wochentag und Uhrzeit), schreibt bis zu 50 Produkte pro Lauf und meldet per `notify.notify`, was ergänzt wurde oder geprüft werden muss
   - Haushaltsartikel (Spülmittel, Seife, Tabs, Weichspüler …) werden auch ohne Reinigungs-Produktgruppe am Namen erkannt und übersprungen
@@ -183,18 +187,21 @@ data:
 | Feld | Standard | Bedeutung |
 |------|----------|-----------|
 | `dry_run` | `true` | Nur nachschlagen und berichten |
-| `limit` | `15` | Höchstens so viele Produkte pro Lauf |
+| `limit` | `15` | Höchstens so viele Abfragen bei Open Food Facts pro Lauf (Treffer aus dem Zwischenspeicher zählen nicht mit) |
+| `replace_placeholder_calories` | `true` | Von Grocy vorbelegten Platzhalter (1 kcal oder weniger) durch den Wert aus Open Food Facts ersetzen |
 | `include_calories` | `true` | Kalorien ergänzen |
 | `include_images` | `true` | Produktbilder hochladen |
 | `exclude_product_groups` | leer | Weitere Produktgruppen überspringen (Teil des Namens genügt). Reinigung, Haushalt, Drogerie, Hygiene, Kosmetik und Tierbedarf sind immer ausgeschlossen |
 | `name_check` | `true` | Abweichende Namen nicht schreiben, sondern melden |
 | `confirm_barcodes` | leer | Barcodes aus `name_mismatch`, die trotzdem geschrieben werden sollen |
 
+**Kalorien-Platzhalter:** Hat Grocy ein Produkt mit 1 kcal vorbelegt, gilt das als „nicht gepflegt“ und wird ersetzt – im Bericht steht dann `calories_old` neben dem neuen Wert. Echte Werte (mehr als 1 kcal) werden nie überschrieben. Mit `replace_placeholder_calories: false` abschaltbar. `coverage.placeholder_calories` zählt diese Produkte.
+
 **Kalorien:** Grocy speichert Energie pro Lagereinheit, Open Food Facts pro 100 g/ml. Bei Gramm, Kilogramm, Milliliter und Liter wird umgerechnet, bei Stück, Packung, Dose, Glas & Co. über die Packungsgröße aus Open Food Facts. Ohne Packungsgröße bleibt das Feld leer und der Bericht nennt den Grund.
 
 **Bilder:** werden als `off_<barcode>.jpg` in Grocy hochgeladen und dem Produkt zugeordnet.
 
-**Tempo:** Open Food Facts erlaubt 15 Produktabfragen pro Minute. Die Bridge fragt höchstens alle 4,5 Sekunden ab, 15 Produkte dauern also gut eine Minute. Ergebnisse werden zwischengespeichert (Treffer 7 Tage, kein Treffer 30 Tage) – ein echter Lauf direkt nach dem Probelauf ist deshalb schnell.
+**Tempo:** Open Food Facts erlaubt 15 Produktabfragen pro Minute. Die Bridge fragt höchstens alle 4,5 Sekunden ab, 15 Abfragen dauern also gut eine Minute. Ergebnisse werden zwischengespeichert (Treffer 7 Tage, kein Treffer 30 Tage) – ein echter Lauf direkt nach dem Probelauf ist deshalb schnell.
 
 **Wöchentlich automatisch:** In den Integrations-Optionen „Kalorien/Bilder wöchentlich aus Open Food Facts ergänzen“ aktivieren und Wochentag und Uhrzeit wählen (Standard Sonntag 03:30). Der Lauf schreibt bis zu 50 Produkte, fragt die Namensprüfung mit ein und schickt nur dann eine Nachricht über `notify.notify`, wenn etwas ergänzt wurde oder ein neuer Name geprüft werden muss. Erst den Service als Probelauf testen.
 

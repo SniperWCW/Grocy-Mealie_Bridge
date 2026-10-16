@@ -73,7 +73,7 @@ enrich_from_openfoodfacts:
         boolean:
     limit:
       name: "Anzahl Produkte"
-      description: "Höchstens so viele Produkte pro Lauf prüfen. Open Food Facts erlaubt etwa 13 Abfragen pro Minute."
+      description: "Höchstens so viele Abfragen bei Open Food Facts pro Lauf (Treffer aus dem Zwischenspeicher zählen nicht). Open Food Facts erlaubt etwa 13 Abfragen pro Minute."
       required: false
       default: 15
       selector:
@@ -114,3 +114,10 @@ enrich_from_openfoodfacts:
       selector:
         text:
           multiple: true
+    replace_placeholder_calories:
+      name: "Kalorien-Platzhalter ersetzen"
+      description: "Ersetzt den von Grocy vorbelegten Wert von 1 kcal (oder weniger) durch den Wert aus Open Food Facts. Echte Werte werden nie überschrieben."
+      required: false
+      default: true
+      selector:
+        boolean:

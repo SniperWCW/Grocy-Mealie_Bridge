@@ -146,7 +146,7 @@
         },
         "limit": {
           "name": "Number of products",
-          "description": "Check at most this many products per run. Open Food Facts allows about 13 lookups per minute."
+          "description": "Maximum number of Open Food Facts requests per run (results from the cache do not count). Open Food Facts allows about 13 requests per minute."
         },
         "include_calories": {
           "name": "Add calories",
@@ -167,6 +167,10 @@
         "confirm_barcodes": {
           "name": "Confirm barcodes",
           "description": "Barcodes from name_mismatch that should be written despite the different name."
+        },
+        "replace_placeholder_calories": {
+          "name": "Replace calorie placeholder",
+          "description": "Replaces the value of 1 kcal (or less) pre-filled by Grocy with the Open Food Facts value. Real values are never overwritten."
         }
       }
     }

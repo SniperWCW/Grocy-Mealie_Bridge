@@ -103,6 +103,7 @@ ENRICH_OFF_SCHEMA = vol.Schema(
         vol.Optional("exclude_product_groups", default=[]): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional("name_check", default=True): cv.boolean,
         vol.Optional("confirm_barcodes", default=[]): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional("replace_placeholder_calories", default=True): cv.boolean,
     }
 )
 
@@ -665,6 +666,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             exclude_product_groups=call.data["exclude_product_groups"],
             name_check=call.data["name_check"],
             confirm_barcodes=call.data["confirm_barcodes"],
+            replace_placeholder_calories=call.data["replace_placeholder_calories"],
         )
         return result if call.return_response else None
 
