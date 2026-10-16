@@ -962,6 +962,7 @@ if (!customElements.get("mealie-grocy-card")) {
 
 const EMERGENCY_SOURCE_URL = "https://www.ernaehrungsvorsorge.de/private-vorsorge/notvorrat/vorratskalkulator";
 const DEFAULT_CHILD_FOOD_FACTOR = 0.7;
+const DEFAULT_KCAL_PER_ADULT = 2200; // BLE/DGE-Richtwert für den Notvorrat, Kinder wie bei den Mengen mit 70 %
 const DEFAULT_CHILD_DRINK_LITERS_PER_DAY = 1;
 const OIL_DENSITY = 0.92;
 
@@ -1191,6 +1192,7 @@ class MealieGrocyEmergencyCardEditor extends LitElement {
           { name: "children", label: "Kinder", selector: { number: { min: 0, max: 20, mode: "box" } } },
           { name: "days", label: "Tage", selector: { number: { min: 1, max: 60, mode: "box" } } },
           { name: "water_liters", label: "Wasser extern (Liter)", selector: { number: { min: 0, max: 1000, step: 0.5, mode: "box" } } },
+          { name: "kcal_per_adult", label: "kcal je Erwachsener und Tag", selector: { number: { min: 1000, max: 4000, step: 50, mode: "box" } } },
           { name: "collapsible", label: "Ein-/ausblendbar", selector: { boolean: {} } },
           { name: "initially_collapsed", label: "Initial eingeklappt", selector: { boolean: {} } },
         ],
@@ -1221,7 +1223,7 @@ class MealieGrocyEmergencyCardEditor extends LitElement {
   _valueChanged(ev) {
     const config = { ...ev.detail.value };
 
-    ["adults", "children", "days", "water_liters"].forEach((key) => {
+    ["adults", "children", "days", "water_liters", "kcal_per_adult"].forEach((key) => {
       if (config[key] === "") delete config[key];
     });
     if (typeof config.collapsible !== "boolean") delete config.collapsible;
@@ -1556,9 +1558,10 @@ class MealieGrocyEmergencyCard extends LitElement {
     const children = this._toPositiveInt(this.config.children, 0, true);
     const days = this._toPositiveInt(this.config.days, 10);
     const waterLiters = this._toNonNegativeNumber(this.config.water_liters);
+    const kcalPerAdult = this._toPositiveInt(this.config.kcal_per_adult, DEFAULT_KCAL_PER_ADULT);
     const collapsible = this.config.collapsible !== false;
     const stockItems = stateObj.attributes.stock_items || [];
-    const summary = this._buildSummary(stockItems, adults, children, days, waterLiters);
+    const summary = this._buildSummary(stockItems, adults, children, days, waterLiters, kcalPerAdult);
     const integrationVersion = stateObj.attributes.integration_version || "unbekannt";
     const overallCoverage = this._formatOverallCoverage(summary, days);
 
@@ -1596,6 +1599,12 @@ class MealieGrocyEmergencyCard extends LitElement {
                     Kein Vorrat erkannt bei: ${summary.zeroCategories.map((category) => category.title).join(", ")}
                   </div>
                 ` : ""}
+              </div>
+              <div class="hero-stat">
+                <span class="hero-stat-label">Kalorien reichen für</span>
+                <div class="hero-stat-value">${summary.kcal.label}</div>
+                <div class="hero-stat-sub">${summary.kcal.detail}</div>
+                ${summary.kcal.warning ? html`<div class="hero-stat-warning">${summary.kcal.warning}</div>` : ""}
               </div>
               <div class="hero-stat">
                 <span class="hero-stat-label">Gruppen im Ziel</span>
@@ -1692,7 +1701,7 @@ class MealieGrocyEmergencyCard extends LitElement {
     return Math.max(1, parsed);
   }
 
-  _buildSummary(stockItems, adults, children, days, waterLiters = 0) {
+  _buildSummary(stockItems, adults, children, days, waterLiters = 0, kcalPerAdult = DEFAULT_KCAL_PER_ADULT) {
     const usableStockItems = stockItems.filter((item) => item?.status !== "expired");
     const groupMap = this._getProductGroupMap();
     const itemsByCategory = new Map(EMERGENCY_CATEGORY_IDS.map((id) => [id, []]));
@@ -1751,7 +1760,45 @@ class MealieGrocyEmergencyCard extends LitElement {
       lowestCategory: lowestCategory || categories[0],
       zeroCategories: categories.filter((category) => category.scorePercent === 0),
       expiredCount: stockItems.length - usableStockItems.length,
+      kcal: this._buildKcalSummary(usableStockItems, groupMap, adults, children, kcalPerAdult),
     };
+  }
+
+  // Kalorien-Reichweite: Summe aus Menge × kcal je Lagereinheit (Grocy-Feld "Kalorien") über alle
+  // Artikel, die in einer der Gruppen zählen. Artikel ohne gepflegten Wert zählen mit 0 und werden benannt.
+  _buildKcalSummary(usableStockItems, groupMap, adults, children, kcalPerAdult) {
+    const dailyNeed = kcalPerAdult * adults + kcalPerAdult * DEFAULT_CHILD_FOOD_FACTOR * children;
+    let total = 0;
+    let counted = 0;
+    const missing = [];
+    usableStockItems.forEach((item) => {
+      if (!this._categorizeItem(item, groupMap)) return;
+      const calories = Number(item?.calories);
+      const amount = Number(item?.amount);
+      if (Number.isFinite(calories) && calories > 0 && Number.isFinite(amount) && amount > 0) {
+        total += calories * amount;
+        counted += 1;
+      } else {
+        missing.push(item?.name || "?");
+      }
+    });
+
+    const days = dailyNeed > 0 ? total / dailyNeed : 0;
+    const totalLabel = `${Math.round(total).toLocaleString("de-DE")} kcal`;
+    const need = `Bedarf ${Math.round(dailyNeed).toLocaleString("de-DE")} kcal/Tag`;
+    let label;
+    let detail;
+    if (counted === 0) {
+      label = "Keine Daten";
+      detail = "In Grocy sind für diese Artikel keine Kalorien gepflegt";
+    } else {
+      label = this._formatCoverageLabel(days);
+      detail = `${totalLabel} · ${need}`;
+    }
+    const warning = missing.length > 0 && counted > 0
+      ? `${missing.length} Artikel ohne Kalorien in Grocy, nicht mitgezählt`
+      : "";
+    return { total, days, dailyNeed, counted, missingCount: missing.length, missingNames: missing.slice(0, 6), label, detail, warning };
   }
 
   _getCategoryTarget(category, adults, children, days) {

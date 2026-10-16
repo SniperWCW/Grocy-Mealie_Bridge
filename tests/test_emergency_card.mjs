@@ -87,3 +87,44 @@ test("Abgelaufene Artikel zählen nicht, werden aber gezählt", () => {
   assert.equal(summary.expiredCount, 1);
   assert.equal(summary.categories.find((category) => category.id === "grain").actualAmount, 0);
 });
+
+test("Kalorien-Reichweite: Menge × kcal je Einheit, Bedarf 2200 kcal je Erwachsener", () => {
+  const card = createCard();
+  const stock = [
+    item("Spaghetti N5", 4, "Stück", { calories: 1795 }),   // 4 × 1795 = 7180
+    item("Olivenöl", 750, "ml", { calories: 8.3 }),          // 6225
+  ];
+  const summary = card._buildSummary(stock, 2, 0, 10, 0);
+  assert.equal(Math.round(summary.kcal.total), 13405);
+  assert.equal(summary.kcal.dailyNeed, 4400);
+  assert.equal(summary.kcal.label, "3.0 Tage");
+  assert.equal(summary.kcal.missingCount, 0);
+});
+
+test("Kalorien-Reichweite: Kinder mit 70 %, eigener kcal-Wert", () => {
+  const card = createCard();
+  const summary = card._buildSummary([item("Reis", 1000, "g", { calories: 3.5 })], 1, 1, 10, 0, 2000);
+  assert.equal(summary.kcal.dailyNeed, 2000 + 1400);
+  assert.equal(summary.kcal.total, 3500);
+});
+
+test("Kalorien-Reichweite: Artikel ohne Kalorien werden benannt, Haushalt und Abgelaufenes zählen nicht", () => {
+  const card = createCard();
+  const stock = [
+    item("Reis", 1000, "g", { calories: 3.5 }),
+    item("Linsen", 500, "g", { calories: null }),
+    item("Spülmittel", 1, "Stück", { calories: 500 }),
+    item("Nudeln", 500, "g", { calories: 3.6, status: "expired" }),
+  ];
+  const summary = card._buildSummary(stock, 1, 0, 10, 0);
+  assert.equal(summary.kcal.total, 3500);
+  assert.deepEqual(Array.from(summary.kcal.missingNames), ["Linsen"]);
+  assert.match(summary.kcal.warning, /1 Artikel ohne Kalorien/);
+});
+
+test("Kalorien-Reichweite: ohne gepflegte Kalorien keine Zahl", () => {
+  const card = createCard();
+  const summary = card._buildSummary([item("Reis", 1000, "g")], 2, 0, 10, 0);
+  assert.equal(summary.kcal.label, "Keine Daten");
+  assert.equal(summary.kcal.days, 0);
+});

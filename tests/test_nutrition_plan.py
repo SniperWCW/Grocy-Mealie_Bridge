@@ -208,3 +208,12 @@ def test_zero_kcal_from_open_food_facts_is_not_written():
     update = plan.plan_update(candidate, "4005555555555", {"kcal_100": 0, "package_amount": 500, "image_url": ""})
     assert not update.has_changes
     assert update.notes == ["0 kcal bei Open Food Facts, nicht geschrieben"]
+
+
+def test_real_calories_drops_placeholders_and_empty_values():
+    assert plan.real_calories("1", "Stück") is None
+    assert plan.real_calories("0", "Gramm") is None
+    assert plan.real_calories(None, "g") is None
+    assert plan.real_calories("0.0067", "g") is None
+    assert plan.real_calories("0.7", "g") == 0.7
+    assert plan.real_calories("1795", "Stück") == 1795

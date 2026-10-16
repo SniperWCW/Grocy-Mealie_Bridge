@@ -302,6 +302,14 @@ def _is_placeholder_calories(value, unit_name="") -> bool:
     return number <= PLACEHOLDER_CALORIES
 
 
+def real_calories(value, unit_name="") -> float | None:
+    """Calories per stock unit if they are a real value, else None (empty, 0 or pre-fill)."""
+    number = _to_float(value)
+    if number is None or number <= 0 or _is_placeholder_calories(number, unit_name):
+        return None
+    return number
+
+
 def _is_empty_calories(value) -> bool:
     number = _to_float(value)
     return number is None or number <= 0

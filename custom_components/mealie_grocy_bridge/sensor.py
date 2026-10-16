@@ -41,6 +41,7 @@ from .const import (
     parse_mealplan_date,
 )
 from .matching import analyze_recipe, build_products_map, stock_status
+from .nutrition_plan import real_calories
 
 _LOGGER = logging.getLogger(__name__)
 RECIPE_CACHE_MAX_AGE = timedelta(hours=6)
@@ -537,6 +538,7 @@ class MealieGrocyBridgeCoordinator(DataUpdateCoordinator):
             "quantity_unit_stock_id": item.get("quantity_unit_stock_id"),
             "best_before_date": item.get("best_before_date"),
             "product_group": str(product_group or "").strip(),
+            "calories": real_calories(product.get("calories"), unit),
             "location_id": location_id,
             "location": location_name,
             "location_source": "product_default" if location_id is not None else "unknown",
@@ -1114,6 +1116,7 @@ class MealieGrocyEmergencySupplySensor(MealieGrocyBaseSensor):
                 "status": item.get("status"),
                 "best_before_date": item.get("best_before_date"),
                 "product_group": item.get("product_group"),
+                "calories": item.get("calories"),
                 "location": item.get("location"),
             }
             for item in self.coordinator.stock_items

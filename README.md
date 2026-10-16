@@ -24,6 +24,9 @@ Diese maßgeschneiderte Home Assistant Integration schließt die Lücke zwischen
 
 ## ✨ Neu 
 
+- **Ab Version 0.5.7**
+  - Notvorratskarte zeigt die **Kalorien-Reichweite**: Menge × kcal je Lagereinheit (Grocy-Feld „Kalorien“, z. B. per Open-Food-Facts-Abgleich gefüllt) gegen 2.200 kcal je Erwachsener und Tag, Kinder mit 70 %. Zählt nur Artikel, die in einer Gruppe der Karte zählen; Artikel ohne Kalorien werden gemeldet, Platzhalter (1 kcal) zählen nicht. Anpassbar über `kcal_per_adult`
+  - Der Vorrat-Sensor liefert dafür `calories` je Artikel
 - **Ab Version 0.5.6**
   - Kalorien-Platzhalter werden je Einheit erkannt: bei g/ml nur Werte unter 0,1 kcal, sonst bis 1 kcal – echte Werte wie 0,7 kcal/g (Apfelmus) oder 1 kcal/g bleiben unangetastet und werden nicht erneut gemeldet
   - Meldet Open Food Facts 0 kcal, wird nichts geschrieben (der Hinweis steht unter `skipped`)
@@ -352,6 +355,7 @@ adults: 2
 children: 1
 days: 10
 water_liters: 20          # optional: Wasser, das nicht in Grocy erfasst ist
+kcal_per_adult: 2200      # optional: Kalorienbedarf je Erwachsener und Tag (Kinder 70 %)
 collapsible: true
 initially_collapsed: false
 product_groups:           # optional: Grocy-Produktgruppe → Gruppe der Karte
@@ -362,6 +366,8 @@ product_groups:           # optional: Grocy-Produktgruppe → Gruppe der Karte
 Gültige Ziele für `product_groups`: `grain`, `vegetables`, `fruit`, `milk`, `protein`, `fats`, `drinks` oder `none` (zählt nicht). Ohne Eintrag erkennt die Karte gängige Gruppennamen wie „Nudeln“, „Mehl“ oder „Reinigungsmittel“ selbst; danach greifen feste Regeln und Suchbegriffe im Produktnamen. Jeder Artikel zählt in genau einer Gruppe. Artikel in Stück werden mit typischen Packungsgrößen geschätzt.
 
 Die Gesamtanzeige „Notvorrat reicht für“ nennt die Tage der schwächsten Gruppe – der Vorrat reicht nur so lange wie das, was zuerst ausgeht. Der Durchschnitt aller Gruppen steht als Zusatzinfo darunter.
+
+**Kalorien-Reichweite:** Die Karte rechnet zusätzlich aus, wie viele Tage die Kalorien im Vorrat reichen. Dazu müssen die Kalorien in Grocy gepflegt sein (je Lagereinheit: bei „g“ kcal pro Gramm, bei „Stück“ kcal pro Packung); der Open-Food-Facts-Abgleich füllt sie. Es zählen nur Artikel, die in einer der Gruppen der Karte zählen – Gewürze, Süßes und Snacks nicht. Artikel ohne Kalorienwert stehen als Hinweis darunter und gehen mit 0 in die Summe ein, die Reichweite ist dann eher zu niedrig als zu hoch.
 
 Die Rezeptkarte bleibt unveraendert. Die neue Karte nutzt den bereits vorhandenen Grocy-Datenabruf und zeigt pro Erzeugnisgruppe:
 
