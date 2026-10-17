@@ -152,6 +152,10 @@
           "name": "Kalorien ergänzen",
           "description": "Fehlende Kalorien pro Lagereinheit eintragen."
         },
+        "repair_images": {
+          "name": "Defekte Bilder reparieren",
+          "description": "Prüft die früher aus Open Food Facts geladenen Bilder (Dateiname off_…) in Grocy und lädt abgeschnittene, leere oder fehlende neu. Eigene Bilder werden nie angefasst."
+        },
         "include_images": {
           "name": "Bilder ergänzen",
           "description": "Fehlende Produktbilder hochladen."

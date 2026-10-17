@@ -121,3 +121,10 @@ enrich_from_openfoodfacts:
       default: true
       selector:
         boolean:
+    repair_images:
+      name: "Defekte Bilder reparieren"
+      description: "Prüft die früher aus Open Food Facts geladenen Bilder (Dateiname off_…) in Grocy und lädt abgeschnittene, leere oder fehlende neu. Eigene Bilder werden nie angefasst."
+      required: false
+      default: false
+      selector:
+        boolean:

@@ -147,6 +147,42 @@ async def _grocy_get(session, url, headers):
         return await response.json()
 
 
+async def _find_broken_pictures(session, grocy_url, headers, products, errors):
+    """Mark products whose earlier Open Food Facts picture is empty, truncated or missing.
+
+    Only files named ``off_*`` are checked, so pictures maintained by hand are
+    never touched. A broken product is handed back with an empty
+    ``picture_file_name``; the normal run then reloads it and overwrites the file.
+    """
+    repaired, broken = [], []
+    for product in products:
+        file_name = str(product.get("picture_file_name") or "").strip() if isinstance(product, dict) else ""
+        if not file_name.startswith("off_"):
+            repaired.append(product)
+            continue
+        encoded = base64.b64encode(file_name.encode()).decode()
+        try:
+            async with session.get(
+                f"{grocy_url}/api/files/productpictures/{encoded}", headers=headers, timeout=REQUEST_TIMEOUT
+            ) as response:
+                if response.status == 404:
+                    data = b""
+                elif response.status != 200:
+                    raise RuntimeError(f"HTTP {response.status}")
+                else:
+                    data = await response.read()
+        except (aiohttp.ClientError, TimeoutError, RuntimeError) as err:
+            errors.append(f"{product.get('name')}: Bild nicht prüfbar ({err})")
+            repaired.append(product)
+            continue
+        if is_complete_image(data):
+            repaired.append(product)
+        else:
+            broken.append(str(product.get("name") or file_name))
+            repaired.append({**product, "picture_file_name": ""})
+    return repaired, broken
+
+
 async def _grocy_write(session, method, url, headers, **kwargs) -> None:
     async with session.request(method, url, headers=headers, timeout=REQUEST_TIMEOUT, **kwargs) as response:
         if response.status not in (200, 204):
@@ -166,6 +202,7 @@ async def async_enrich_from_openfoodfacts(
     name_check: bool = True,
     confirm_barcodes=(),
     replace_placeholder_calories: bool = True,
+    repair_images: bool = False,
 ) -> dict:
     """Look up products missing calories or pictures and (unless dry_run) fill them in Grocy."""
     lock: asyncio.Lock = runtime_data.setdefault("off_enrich_lock", asyncio.Lock())
@@ -184,6 +221,7 @@ async def async_enrich_from_openfoodfacts(
             name_check,
             {str(code).strip() for code in confirm_barcodes or []},
             replace_placeholder_calories,
+            repair_images,
         )
 
     runtime_data["last_off_enrichment"] = result
@@ -202,7 +240,7 @@ async def async_enrich_from_openfoodfacts(
 
 async def _async_run(
     hass, runtime_data, dry_run, limit, include_calories, include_images, exclude_groups, name_check, confirmed,
-    replace_placeholder,
+    replace_placeholder, repair_images=False,
 ) -> dict:
     result = {
         "status": "ok",
@@ -216,6 +254,7 @@ async def _async_run(
         "not_found": [],
         "skipped": [],
         "without_barcode": [],
+        "broken_images": [],
         "excluded_groups": [],
         "coverage": {},
         "errors": [],
@@ -239,6 +278,10 @@ async def _async_run(
     products, excluded = filter_excluded_products(products, product_groups, exclude_groups)
     result["excluded_groups"] = excluded
     result["coverage"] = coverage_stats(products, barcodes, replace_placeholder, quantity_units)  # Stand vor diesem Lauf
+    if repair_images and include_images:
+        products, result["broken_images"] = await _find_broken_pictures(
+            session, grocy_url, headers, products, result["errors"]
+        )
     candidates, without_barcode = select_candidates(
         products, barcodes, quantity_units, include_calories, include_images, replace_placeholder
     )

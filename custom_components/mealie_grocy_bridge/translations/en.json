@@ -152,6 +152,10 @@
           "name": "Add calories",
           "description": "Fill in missing calories per stock unit."
         },
+        "repair_images": {
+          "name": "Repair broken pictures",
+          "description": "Check pictures previously loaded from Open Food Facts (file name off_…) and reload truncated, empty or missing ones. Your own pictures are never touched."
+        },
         "include_images": {
           "name": "Add pictures",
           "description": "Upload missing product pictures."

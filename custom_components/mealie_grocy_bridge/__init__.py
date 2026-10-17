@@ -104,6 +104,7 @@ ENRICH_OFF_SCHEMA = vol.Schema(
         vol.Optional("name_check", default=True): cv.boolean,
         vol.Optional("confirm_barcodes", default=[]): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional("replace_placeholder_calories", default=True): cv.boolean,
+        vol.Optional("repair_images", default=False): cv.boolean,
     }
 )
 
@@ -667,6 +668,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             name_check=call.data["name_check"],
             confirm_barcodes=call.data["confirm_barcodes"],
             replace_placeholder_calories=call.data["replace_placeholder_calories"],
+            repair_images=call.data["repair_images"],
         )
         return result if call.return_response else None
 
