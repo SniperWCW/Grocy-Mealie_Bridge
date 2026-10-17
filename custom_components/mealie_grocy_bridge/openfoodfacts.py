@@ -183,6 +183,15 @@ async def _find_broken_pictures(session, grocy_url, headers, products, errors):
     return repaired, broken
 
 
+async def _grocy_delete_file(session, url, headers) -> None:
+    """Best-effort delete of a stored file; a missing file (404) is the normal case."""
+    try:
+        async with session.request("DELETE", url, headers=headers, timeout=REQUEST_TIMEOUT):
+            pass
+    except (aiohttp.ClientError, TimeoutError):
+        pass  # the upload that follows reports any real problem
+
+
 async def _grocy_write(session, method, url, headers, **kwargs) -> None:
     async with session.request(method, url, headers=headers, timeout=REQUEST_TIMEOUT, **kwargs) as response:
         if response.status not in (200, 204):
@@ -376,10 +385,15 @@ async def _apply_update(session, client, grocy_url, headers, update) -> None:
         image = await client.async_download_image(update.image_url)
         file_name = picture_file_name(update.barcode, update.image_url)
         encoded = base64.b64encode(file_name.encode()).decode()
+        file_url = f"{grocy_url}/api/files/productpictures/{encoded}"
+        # Grocy refuses to overwrite an existing file (HTTP 400 "Error while creating file").
+        # The name is derived from the barcode, so a leftover file of the same name is ours
+        # (e.g. a truncated earlier download) and is removed after the new picture is valid.
+        await _grocy_delete_file(session, file_url, headers)
         await _grocy_write(
             session,
             "PUT",
-            f"{grocy_url}/api/files/productpictures/{encoded}",
+            file_url,
             {**headers, "Content-Type": "application/octet-stream"},
             data=image,
         )
