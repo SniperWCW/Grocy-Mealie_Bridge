@@ -392,6 +392,23 @@ def plan_update(candidate: Candidate, barcode: str, off_product: dict) -> Produc
     return update
 
 
+def is_complete_image(data: bytes) -> bool:
+    """Return True when ``data`` looks like a complete JPEG, PNG or WebP file.
+
+    Guards against empty or truncated downloads, which Grocy would otherwise
+    show as a half-grey picture.
+    """
+    if not data or len(data) < 100:
+        return False
+    if data.startswith(b"\xff\xd8"):  # JPEG: must end with the EOI marker
+        return data.rstrip(b"\x00").endswith(b"\xff\xd9")
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):  # PNG: must end with the IEND chunk
+        return data[-8:-4] == b"IEND"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":  # WebP: RIFF size covers the file
+        return int.from_bytes(data[4:8], "little") + 8 <= len(data)
+    return False
+
+
 def picture_file_name(barcode: str, image_url: str) -> str:
     """File name for the uploaded picture, e.g. ``off_4001234567890.jpg``."""
     match = re.search(r"\.(jpe?g|png|webp)(?:\?|$)", image_url.lower())

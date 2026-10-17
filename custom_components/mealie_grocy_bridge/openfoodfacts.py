@@ -30,6 +30,7 @@ from .nutrition_plan import (
     coverage_stats,
     filter_excluded_products,
     format_package,
+    is_complete_image,
     names_match,
     parse_off_product,
     picture_file_name,
@@ -122,9 +123,20 @@ class _OffClient:
         async with self._session.get(url, headers={"User-Agent": self._headers["User-Agent"]}, timeout=OFF_TIMEOUT) as response:
             if response.status != 200:
                 raise RuntimeError(f"Bild nicht ladbar (HTTP {response.status})")
-            data = await response.content.read(MAX_IMAGE_BYTES + 1)
-        if len(data) > MAX_IMAGE_BYTES:
-            raise RuntimeError("Bild größer als 5 MB")
+            # content.read(n) returns only what is buffered right now, so read until EOF.
+            chunks: list[bytes] = []
+            size = 0
+            async for chunk in response.content.iter_chunked(64 * 1024):
+                size += len(chunk)
+                if size > MAX_IMAGE_BYTES:
+                    raise RuntimeError("Bild größer als 5 MB")
+                chunks.append(chunk)
+            data = b"".join(chunks)
+            expected = response.content_length
+        if expected is not None and len(data) != expected:
+            raise RuntimeError(f"Bild unvollständig geladen ({len(data)} von {expected} Bytes)")
+        if not is_complete_image(data):
+            raise RuntimeError("Bild leer oder beschädigt")
         return data
 
 

@@ -90,6 +90,17 @@ def test_plan_update_reports_what_is_missing():
     assert (update.calories, update.image_url, update.has_changes) == (1650, "https://img/l.jpg", True)
 
 
+def test_is_complete_image_rejects_empty_and_truncated():
+    jpeg = b"\xff\xd8" + b"\x01" * 200 + b"\xff\xd9"
+    assert plan.is_complete_image(jpeg)
+    assert not plan.is_complete_image(b"")
+    assert not plan.is_complete_image(jpeg[:150])  # truncated: no end marker
+    assert not plan.is_complete_image(b"<html>" + b"x" * 200)
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 200 + b"\x00\x00\x00\x00IEND\xaeB`\x82"
+    assert plan.is_complete_image(png)
+    assert not plan.is_complete_image(png[:-20])
+
+
 def test_picture_file_name_keeps_extension():
     assert plan.picture_file_name("400123", "https://images.off.org/x/front_de.12.400.jpg") == "off_400123.jpg"
     assert plan.picture_file_name("400123", "https://images.off.org/x/front.png?v=2") == "off_400123.png"
